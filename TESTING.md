@@ -1,7 +1,8 @@
 # Testing this alone
 
-You do not need other players. The work splits into four tiers, and only the
-last one needs a second human.
+You do not need other players. The work splits into tiers, and only the last one
+needs a second human. Tiers 1-4 cover the save editor; tier 5 covers the live
+mod.
 
 ## Tier 1 - pool math (no game, no save files)
 
@@ -37,3 +38,15 @@ wrote*. You need exactly one player for this.
 Only validates that two players converge, which tiers 1-2 already prove at the
 data layer. Nice-to-have, not a blocker for v0. A single 20-minute session with
 one other person covers it.
+
+## Tier 5 - the live mod
+
+`lua tests/lua/test_pool.lua` runs the mod's logic against a stubbed UE4SS: no
+game, no Palworld, no second player. It covers the sharing math, the earner
+exclusion, the duplicate filter and the re-entrancy guard.
+
+What it cannot cover is which function Palworld actually calls when XP is
+earned, and that is the one thing the whole mod rests on. So the mod ships in
+discovery mode: the first in-game run only watches and logs. See
+[mod/README.md](mod/README.md) -- that run needs one account and about two
+minutes.

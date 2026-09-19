@@ -2,8 +2,14 @@
 
 One XP pool for everyone on a server. Everybody contributes, everybody benefits.
 
-**Status: v0 (offline save editor).** Works end-to-end on a real save. The live
-UE4SS mod is not started yet.
+**Status:** v0, the offline save editor, works end-to-end on a real save. v1,
+the live UE4SS mod, is written and unit-tested but has not run inside Palworld
+yet -- see [mod/README.md](mod/README.md).
+
+The two are not rivals. The live mod shares XP between players who are connected
+at the time; the save editor catches up anyone who was not. Once the mod is
+running, `apply` becomes the between-sessions top-up rather than the whole
+product.
 
 ## What v0 does
 
@@ -92,7 +98,7 @@ pairs from a save.
 ## Known gaps
 
 - **Pals are not touched.** Only player characters are pooled.
-- **Offline-only.** This is a save editor, not a live mod.
+- **Offline-only.** This half is a save editor. The live mod is in `mod/`.
 - **Not yet loaded in Palworld.** Every check so far is at the data layer:
   files round-trip, structures intact, property order matches vanilla. Whether
   the game accepts an edited save is still unverified.
@@ -106,3 +112,5 @@ data layer.
 ```
 .venv/Scripts/python -m pytest -q
 ```
+
+That covers the live mod's Lua suite too, and skips it if Lua is not installed.
