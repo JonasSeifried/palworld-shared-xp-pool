@@ -11,7 +11,7 @@ jobs:
     name: mod (lua)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The mod runs on the Lua that UE4SS ships, which is 5.4. The suite uses
       # integer bitwise operators, so 5.2 and earlier will not even parse it.
@@ -25,9 +25,9 @@ jobs:
     name: save editor (python)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
