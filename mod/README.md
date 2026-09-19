@@ -166,6 +166,7 @@ anything is paid. Pause first, or the mod's own payouts are in the readings.
 | `Scripts/players.lua` | finding players, reading their XP, paying them |
 | `Scripts/probe.lua` | discovery: the hooks, the F7 dump, the F9 signatures |
 | `INSTALL.txt` | what ships in the zip, for somebody who has only the zip |
+| `nexus-description.bbcode` | the Nexus page, kept here so it is reviewed like the rest |
 
 `probe.lua` is a third of the mod's code and none of it runs in a normal
 session, so it is not loaded unless `debug_keys` or `probe_only` is set. Of the

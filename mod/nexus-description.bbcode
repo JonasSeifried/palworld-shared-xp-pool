@@ -1,0 +1,79 @@
+[size=5][b]Everyone in your world stays at the same level.[/b][/size]
+
+Go off and do your own thing -- mine, build, hunt, explore -- and nobody falls behind. Come back after a week away and you are level with everyone else. Somebody joining your world for the first time starts where you are, not at level 1.
+
+It does not invent XP. The world progresses at the pace of whoever is doing best, and everybody shares that pace. Playing side by side still works exactly like vanilla; the job is making sure that [i]splitting up[/i] costs nobody their progress.
+
+[line]
+
+[size=4][b]Install on the host only[/b][/size]
+
+Palworld decides XP server-side, so whoever hosts the world decides it for everybody. [b]People joining you install nothing.[/b]
+
+[list=1]
+[*][b]Install UE4SS -- [url=https://github.com/Okaetsu/RE-UE4SS/releases/latest]Okaetsu's Palworld fork[/url], not stock RE-UE4SS.[/b] Palworld made engine edits in 0.4.1.5 and needs that build. If you subscribed to a UE4SS copy on the Steam Workshop, unsubscribe -- two copies load at once and the game crashes on launch.
+[*][b]Extract this archive over your Palworld folder[/b], the one containing [i]Pal\[/i]. Everything lands in [i]Pal\Binaries\Win64\ue4ss\Mods\SharedXPPool\[/i].
+[*][b]Start the game and host your world.[/b]
+[/list]
+
+To check it loaded, look in [i]Pal\Binaries\Win64\ue4ss\UE4SS.log[/i] for:
+[code]
+[SharedXPPool] loading
+[SharedXPPool] sharing active, checking every 1000 ms
+[SharedXPPool] ready -- bound: F11 pause/resume sharing  (debug keys off)
+[/code]
+
+[b]F11 pauses and resumes sharing[/b] while you play, so you can stop it mid-session without alt-tabbing out to edit files. Nothing accumulates while it is paused.
+
+[line]
+
+[size=4][b]What it does not do[/b][/size]
+
+[b]It will not level you faster than the best player among you.[/b] Two of you killing things in different places does not add up -- you both end up wherever the better of you got to. Standing together in vanilla already gives you both kills, so playing together is still the quickest way to play. This removes the penalty for not doing that; it is not an XP multiplier.
+
+[b]Your pals come along.[/b] XP is paid through the game's own party grant, so a pal gains roughly a fifth of what its owner does -- the same way it would if the owner had earned it. The mod does not choose that fraction and cannot turn it off: Palworld has no player-only XP call.
+
+[b]Nobody is ever lowered.[/b] If you are the one in front, nothing happens to you.
+
+[line]
+
+[size=4][b]Settings[/b][/size]
+
+Everything is in [i]Scripts\config.lua[/i], with the reasoning written next to each one. The only one most people touch:
+
+[code]
+config.catch_up_rate = 0.25   -- a quarter of the gap each second
+                              -- 1.0 is instant, 0 is off
+[/code]
+
+A fraction rather than a number of XP, because an amount that is sensible at level 10 -- where a level costs 1,900 XP -- is a rounding error at level 60, where it costs 670,000.
+
+Set [i]config.verbose = false[/i] for one summary line per tick instead of one line per player.
+
+[line]
+
+[size=4][b]How it works[/b][/size]
+
+One rule, re-asserted every second: [b]read everybody's XP total, find the highest, move everyone else toward it.[/b]
+
+Catching a returning player up and sharing during play are the same operation, so there is no login hook and no catch-up mode. It cannot run away with itself: every payout moves people toward a fixed point, and a tick where everybody is level does nothing at all.
+
+It is built to be safe to leave running on a world you care about:
+
+[list]
+[*]Payouts name their recipient. Nothing is forwarded to bystanders, so the target never moves while it is being approached.
+[*]A reading the game could not have produced -- one that went backwards, or one in the billions -- is refused, and never becomes the baseline the next reading is judged against.
+[*]Nobody is paid on the first tick they are seen, in case the number is still settling.
+[*]Payouts are watched landing. If XP stops moving, it stops paying and says so in the log rather than paying into the void.
+[*]XP is added through the game's own function, so level-ups, the UI and replication all happen normally. It never writes a level.
+[/list]
+
+Uninstalling is deleting the folder. Nothing is written to your save.
+
+[line]
+
+[size=4][b]Source[/b][/size]
+
+MIT licensed, and the whole thing is about 470 lines of Lua with 38 tests against a stubbed UE4SS. The README documents the approaches that were tried and abandoned, which is worth reading before suggesting one: [url=https://github.com/JonasSeifried/palworld-shared-xp-pool]github.com/JonasSeifried/palworld-shared-xp-pool[/url]
+
+Bug reports with the relevant lines of [i]UE4SS.log[/i] are much more useful than bug reports without them.
