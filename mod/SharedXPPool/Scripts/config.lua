@@ -1,5 +1,9 @@
 local config = {}
 
+-- ---------------------------------------------------------------------------
+-- Settings
+-- ---------------------------------------------------------------------------
+
 -- How fast somebody behind catches up, as a fraction of the gap each tick.
 --
 --   0.25  a quarter of the remaining distance every second (default)
@@ -17,13 +21,27 @@ local config = {}
 -- level-up popups, and the XP that reaches your pals along the way.
 config.catch_up_rate = 0.25
 
--- How often to check. Nothing is measured across ticks, so this is only how
--- quickly someone is brought level, not an accuracy setting.
-config.poll_interval_ms = 1000
+-- Key that pauses and resumes sharing, by name in UE4SS's Key table.
+--
+-- For stopping the mod mid-session without alt-tabbing out to edit files.
+-- Nothing accumulates while it is paused. F10 is out; UE4SS's console enabler
+-- uses it. Set to nil to bind nothing.
+config.pause_key = "F11"
 
 -- Log every payout. Off gives one summary line per tick instead of one per
 -- player, which matters while a large gap is closing.
 config.verbose = true
+
+-- How often to check. Nothing is measured across ticks, so this is only how
+-- quickly somebody is brought level, not an accuracy setting.
+config.poll_interval_ms = 1000
+
+-- ---------------------------------------------------------------------------
+-- Debugging
+--
+-- None of the rest is needed to play. Everything below is off, and two of them
+-- change the world when they are not.
+-- ---------------------------------------------------------------------------
 
 -- Log everybody's total once a tick, whether or not anything is paid.
 --
@@ -31,7 +49,26 @@ config.verbose = true
 -- first, or the mod's own payouts are in the readings.
 config.watch_totals = false
 
--- Discovery mode. Observes and logs, changes nothing.
+-- Bind the probe keys (F6/F7/F8/F9).
+--
+-- Off, and that is not tidiness. F6 and F8 inject XP into the world, and F9
+-- walks reflected function parameters -- the thing that hard-crashed the game
+-- during discovery. On the host's keyboard during a real session a stray
+-- function key is a live-world event, not a debugging convenience.
+--
+--   F7  read and report every connected player
+--   F8  pay player 1 the amount below;  F6  the same for player 2
+--   F9  dump the exp API's function signatures
+config.debug_keys = false
+
+-- How much XP those test payouts hand over.
+--
+-- 1 is right for "did the payout land, and on whom". It is useless for checking
+-- what the recipient's pal gets, because a pal takes roughly a fifth and a
+-- fifth of 1 rounds to nothing. Set it to a few hundred for that.
+config.test_grant_amount = 1
+
+-- Discovery mode. Observes and logs, shares nothing.
 --
 -- Off, because the probe runs answered what they were for. Reading works: F7
 -- enumerated the player and read their level and XP through
@@ -40,30 +77,8 @@ config.watch_totals = false
 -- and the game levelled the player up on its own at the right threshold.
 --
 -- Turn it back on after a game patch, or if XP stops moving and you need to
--- find out which half broke. It arms the probe keys on its own, so
--- config.debug_keys below does not also have to be set.
+-- find out which half broke. It arms the probe keys on its own, so debug_keys
+-- does not also have to be set.
 config.probe_only = false
-
--- Bind the probe keys (F6/F7/F8/F9) when the mod is live.
---
--- Off, and that is not tidiness. F6 and F8 inject XP into the world, and F9
--- walks reflected function parameters -- the thing that hard-crashed the game
--- during discovery. On the host's keyboard during a real session a stray
--- function key is a live-world event, not a debugging convenience.
-config.debug_keys = false
-
--- How much XP the F6 and F8 test payouts hand over.
---
--- 1 is right for "did the payout land, and on whom". It is useless for checking
--- what the recipient's pal gets, because a pal takes roughly a fifth and a
--- fifth of 1 rounds to nothing. Set it to a few hundred for that.
-config.test_grant_amount = 1
-
--- Key that pauses and resumes sharing, by name in UE4SS's Key table.
---
--- The point is being able to stop the mod mid-session without alt-tabbing out
--- to edit files. F10 is out; UE4SS's console enabler uses it. Set to nil to
--- bind nothing.
-config.pause_key = "F11"
 
 return config
