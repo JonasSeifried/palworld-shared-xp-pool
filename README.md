@@ -92,6 +92,31 @@ position the game uses.
 Note that `UnlockedRecipeTechnologyNames` mixes level-granted recipes with
 purchased tech-tree nodes, so its length is not a count of points spent.
 
+## Save format
+
+Palworld 0.6 changed the save format twice over, and `palworld-save-tools` has
+not shipped since October 2024, so both changes are handled here.
+
+**The container.** Compression went from zlib to Oodle Kraken, and the magic
+from `PlZ` to `PlM`. Reading Oodle needs `pyooz`, which is a dependency. Writing
+it is not possible -- Oodle's compressor is proprietary and the open
+reimplementation only decompresses -- so a `PlM` save is written back as `PlZ`,
+double-compressed for `Level.sav` and single for everything else, exactly as the
+game itself wrote them before 0.6. The shipping binary still carries the `PlZ`
+magic alongside `PlM` in both its read and write paths, and the zlib path has to
+exist to migrate pre-0.6 saves forward. That is good evidence the game will
+accept it. It is not proof, and it has not been tried.
+
+**The data.** Each character's blob grew four trailing bytes, `Level` became a
+`ByteProperty` (nesting the number under an enum tag) and `Exp` widened to
+`Int64Property`. `rawdata.py` treats everything after the character's properties
+as opaque and writes it back untouched, so it reads both eras and survives the
+next field that gets appended. Every other `RawData` in the save is left as raw
+bytes rather than decoded by a parser older than the format.
+
+Verified by reading and rewriting a current save and an old one and comparing:
+identical, byte for byte, in all three cases.
+
 ## Curve drift
 
 `data/exp_table.json` is datamined from the current build. Old saves were made
@@ -101,13 +126,19 @@ never-lower rule makes it harmless, since those players keep their grandfathered
 level. `ExpCurve.validate()` re-checks any table against real `(level, xp)`
 pairs from a save.
 
+The table has been checked against a current-patch save and explains all three
+players exactly, so the drift seen on the 2024 save was the save being old, not
+the table being wrong.
+
 ## Known gaps
 
 - **Pals are not touched.** Only player characters are pooled.
 - **Offline-only.** This half is a save editor. The live mod is in `mod/`.
 - **Not yet loaded in Palworld.** Every check so far is at the data layer:
   files round-trip, structures intact, property order matches vanilla. Whether
-  the game accepts an edited save is still unverified.
+  the game accepts an edited save is still unverified -- and since 0.6 that
+  question carries more weight, because an edited save also comes back in a
+  different compression format than the one the game wrote.
 
 ## Testing
 

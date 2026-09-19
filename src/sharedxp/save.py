@@ -8,16 +8,19 @@ The per-player Players/<uid>.sav holds inventory and TechnologyPoint instead.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from palworld_save_tools.gvas import GvasFile
-from palworld_save_tools.palsav import compress_gvas_to_sav, decompress_sav_to_gvas
-from palworld_save_tools.paltypes import PALWORLD_CUSTOM_PROPERTIES, PALWORLD_TYPE_HINTS
+from palworld_save_tools.paltypes import PALWORLD_TYPE_HINTS
 
+from .compression import SaveFormat, compress_sav, decompress_sav, zlib_format_for
 from .pool import Player
+from .rawdata import CUSTOM_PROPERTIES, read_exp, read_level, write_exp, write_level
 
 LEVEL_SAV = "Level.sav"
 
@@ -26,11 +29,24 @@ class SaveError(Exception):
     pass
 
 
+@contextlib.contextmanager
+def _quiet():
+    """Swallow palworld-save-tools' running commentary.
+
+    It prints a "Struct type for X not found, assuming StructProperty" line for
+    every struct it has no hint for -- 321 of them on one current-patch save,
+    none of them actionable. Suppressing stdout does not hide failures; those
+    come back as exceptions.
+    """
+    with contextlib.redirect_stdout(io.StringIO()):
+        yield
+
+
 @dataclass
 class LevelSave:
     path: Path
     gvas: GvasFile
-    save_type: int
+    fmt: SaveFormat
 
     @classmethod
     def load(cls, world_dir: str | Path) -> LevelSave:
@@ -38,9 +54,10 @@ class LevelSave:
         if not path.is_file():
             raise SaveError(f"no {LEVEL_SAV} in {world_dir}")
         with open(path, "rb") as f:
-            raw, save_type = decompress_sav_to_gvas(f.read())
-        gvas = GvasFile.read(raw, PALWORLD_TYPE_HINTS, PALWORLD_CUSTOM_PROPERTIES)
-        return cls(path=path, gvas=gvas, save_type=save_type)
+            raw, fmt = decompress_sav(f.read())
+        with _quiet():
+            gvas = GvasFile.read(raw, PALWORLD_TYPE_HINTS, CUSTOM_PROPERTIES)
+        return cls(path=path, gvas=gvas, fmt=fmt)
 
     def _player_entries(self):
         try:
@@ -67,8 +84,8 @@ class LevelSave:
                 Player(
                     uid=uid,
                     name=sp.get("NickName", {}).get("value", "<unnamed>"),
-                    level=sp.get("Level", {}).get("value", 1),
-                    exp=sp.get("Exp", {}).get("value", 0),
+                    level=read_level(sp),
+                    exp=read_exp(sp),
                 )
             )
         return out
@@ -83,8 +100,8 @@ class LevelSave:
             level, exp = targets[uid]
             if "Level" not in sp or "Exp" not in sp:
                 raise SaveError(f"player {uid} has no Level/Exp field to write")
-            sp["Level"]["value"] = level
-            sp["Exp"]["value"] = exp
+            write_level(sp, level)
+            write_exp(sp, exp)
             written += 1
         return written
 
@@ -94,13 +111,27 @@ class LevelSave:
         shutil.copy2(self.path, dest)
         return dest
 
-    def save(self) -> None:
-        raw = self.gvas.write(PALWORLD_CUSTOM_PROPERTIES)
-        blob = compress_gvas_to_sav(raw, self.save_type)
+    def save(self) -> bool:
+        """Write the file back. Returns True if the format was converted.
+
+        An Oodle save cannot be written as Oodle -- there is no open compressor
+        -- so it comes back as zlib. Callers surface that rather than swallowing
+        it, because it is a change to the file beyond the values we edited.
+        """
+        fmt = self.fmt
+        converted = fmt.is_oodle
+        if converted:
+            fmt = zlib_format_for(self.path.name)
+
+        with _quiet():
+            raw = self.gvas.write(CUSTOM_PROPERTIES)
+        blob = compress_sav(raw, fmt)
         tmp = self.path.with_suffix(".sav.tmp")
         with open(tmp, "wb") as f:
             f.write(blob)
         tmp.replace(self.path)
+        self.fmt = fmt
+        return converted
 
 
 def normalize_uid(uid: str) -> str:
@@ -114,15 +145,16 @@ class PlayerSave:
 
     path: Path
     gvas: GvasFile
-    save_type: int
+    fmt: SaveFormat
 
     @classmethod
     def load(cls, path: str | Path) -> PlayerSave:
         path = Path(path)
         with open(path, "rb") as f:
-            raw, save_type = decompress_sav_to_gvas(f.read())
-        gvas = GvasFile.read(raw, PALWORLD_TYPE_HINTS, PALWORLD_CUSTOM_PROPERTIES)
-        return cls(path=path, gvas=gvas, save_type=save_type)
+            raw, fmt = decompress_sav(f.read())
+        with _quiet():
+            gvas = GvasFile.read(raw, PALWORLD_TYPE_HINTS, CUSTOM_PROPERTIES)
+        return cls(path=path, gvas=gvas, fmt=fmt)
 
     @classmethod
     def load_all(cls, world_dir: str | Path) -> dict[str, PlayerSave]:
@@ -198,10 +230,24 @@ class PlayerSave:
         shutil.copy2(self.path, dest)
         return dest
 
-    def save(self) -> None:
-        raw = self.gvas.write(PALWORLD_CUSTOM_PROPERTIES)
-        blob = compress_gvas_to_sav(raw, self.save_type)
+    def save(self) -> bool:
+        """Write the file back. Returns True if the format was converted.
+
+        An Oodle save cannot be written as Oodle -- there is no open compressor
+        -- so it comes back as zlib. Callers surface that rather than swallowing
+        it, because it is a change to the file beyond the values we edited.
+        """
+        fmt = self.fmt
+        converted = fmt.is_oodle
+        if converted:
+            fmt = zlib_format_for(self.path.name)
+
+        with _quiet():
+            raw = self.gvas.write(CUSTOM_PROPERTIES)
+        blob = compress_sav(raw, fmt)
         tmp = self.path.with_suffix(".sav.tmp")
         with open(tmp, "wb") as f:
             f.write(blob)
         tmp.replace(self.path)
+        self.fmt = fmt
+        return converted
