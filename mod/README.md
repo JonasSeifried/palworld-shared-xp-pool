@@ -79,7 +79,7 @@ reading of "as if it was one player", but it is off by default.
 
 **Connected players only.** A player who is offline has no loaded save for the
 mod to reach. Catching them up on return is the save editor's job -- run
-`sharedxp.cli apply` between sessions.
+`sharedxp apply` between sessions.
 
 **Pals are not touched**, same as v0.
 

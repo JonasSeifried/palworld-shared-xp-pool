@@ -17,8 +17,10 @@ Reads every player out of a world save, averages their XP into a single pool,
 and pulls anyone below the pool up to that total.
 
 ```
-.venv/Scripts/python -m sharedxp.cli report <world-dir>
-.venv/Scripts/python -m sharedxp.cli apply  <world-dir>
+pip install -e .
+
+sharedxp report <world-dir>
+sharedxp apply  <world-dir>
 ```
 
 `report` never writes. `apply` backs up every file it touches, then re-reads
@@ -29,6 +31,10 @@ from disk afterwards and fails loudly if the values did not land.
 
 - in-game host: `%LOCALAPPDATA%\Pal\Saved\SaveGames\<steamid>\<worldid>`
 - dedicated server: `<PalServer>/Pal/Saved/SaveGames/0/<worldid>`
+
+Only the host has one. A player who merely joined a world keeps a `LocalData.sav`
+for it and nothing else, so the save has to come off the host's machine --
+`tools/collect_save.ps1` zips it up correctly, skipping the `backup/` folder.
 
 **Stop the game or server first.** Palworld writes on exit and will overwrite
 anything changed underneath it.
@@ -65,7 +71,7 @@ unlock set to everyone. So it belongs there, not here.
 The implementation exists and is tested. `--tech` opts in:
 
 ```
-.venv/Scripts/python -m sharedxp.cli report <world-dir> --tech
+sharedxp report <world-dir> --tech
 ```
 
 It unions everyone's unlocks and raises every balance to the group maximum.

@@ -1,0 +1,2 @@
+[console_scripts]
+sharedxp = sharedxp.cli:main

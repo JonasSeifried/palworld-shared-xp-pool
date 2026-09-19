@@ -5,6 +5,16 @@ description = "Shared XP pool for Palworld servers"
 requires-python = ">=3.11"
 dependencies = ["palworld-save-tools"]
 
+[project.scripts]
+sharedxp = "sharedxp.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
