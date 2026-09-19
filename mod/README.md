@@ -38,9 +38,10 @@ That makes the mod source-agnostic. Kills, crafting, building, capture bonuses
 and anything added in a future patch all look the same.
 
 Payouts go through the game's own `GiveExpToAroundPlayerCharacter` at the
-recipient's feet, so level-ups, UI and replication happen normally. Each payout
-is recorded and discounted from that player's next reading -- otherwise the mod
-would see its own gift as earnings and mirror it again, forever.
+recipient's feet, so level-ups, UI and replication happen normally.
+
+Keeping the mod from reacting to its own payouts is the hard part, and the
+first attempt at it was wrong. See the two-player run below.
 
 ## What the second probe run found
 
@@ -131,15 +132,18 @@ recoverable -- that is what the save editor is for.
 
 The keys stay bound when the mod is live, and F8 doubles as the two-player test.
 
-With both players connected, press **F8**. It grants 1 XP to the first player,
-which the pool then sees as earned and mirrors, so the other player should gain
-1 XP within a second. `UE4SS.log` will say so:
+With both players connected, press **F8 once**. It grants 1 XP to the first
+player, which the pool sees as a rise nobody else matched, so the other player
+gains 1 XP within a second. `UE4SS.log` will say so:
 
 ```
-[SharedXPPool] Tondoa earned 1 xp -> shared to 1 player(s)
+[SharedXPPool] best rise 1 xp -> topped up 1 player(s) by 1 xp total
 ```
 
 That beats grinding kills to find out whether sharing works.
+
+**Then stop and watch the log for ten seconds.** One line is correct; a line
+every second is the loop, and it means the fix did not hold.
 
 ## Install
 
