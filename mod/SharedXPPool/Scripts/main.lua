@@ -86,4 +86,5 @@ end
 -- pressed, and one of those is a bug in here.
 print("[SharedXPPool] ready -- bound: "
     .. (#bound > 0 and table.concat(bound, ", ") or "nothing")
-    .. (config.debug_keys and "" or "  (debug keys off)") .. "\n")
+    .. ((config.debug_keys or config.probe_only) and "" or "  (debug keys off)")
+    .. "\n")

@@ -37,6 +37,13 @@ function fake.reset(player_names)
         -- Whether the list-based payout can be reached at all, so a test can
         -- force the radius fallback.
         precise_available = true,
+        -- Whether a payout actually moves the number. Set false to model a
+        -- call that succeeds and quietly does nothing -- a recipient the game
+        -- will not take past the level cap, or a patched-out function.
+        grants_land = true,
+        -- The loaded world's identity. Change it to model the host returning
+        -- to the menu and loading a different save without restarting.
+        world_id = 0x9000,
         sphere_calls = 0,
         delayed = {},
     }
@@ -145,7 +152,7 @@ local exp_database = {
     GetFullName = function() return "BP_PalExpDatabase_C /Engine/Transient.fake" end,
     AddExpValue_forPlayerParty_Server = function(_, amount, gift_list, _)
         for _, character in ipairs(gift_list) do
-            character._exp = character._exp + amount
+            if state.grants_land then character._exp = character._exp + amount end
             state.grants[#state.grants + 1] = { character = character, amount = amount }
         end
     end,
@@ -159,7 +166,12 @@ local function install_uehelpers()
     package.preload["UEHelpers"] = function()
         return {
             GetWorld = function()
-                return { IsValid = function() return true end }
+                return {
+                    IsValid = function() return true end,
+                    -- The pool tells one world from another by address, so the
+                    -- fake has to have one that a test can change.
+                    GetAddress = function() return state.world_id end,
+                }
             end,
             GetAllPlayers = function()
                 local pawns = {}

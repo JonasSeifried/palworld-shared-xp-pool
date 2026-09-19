@@ -32,6 +32,22 @@ function players.world()
     return nil
 end
 
+-- An identity for the loaded world, so the pool can tell that a *different*
+-- one has been loaded without the game being restarted -- go to the main menu,
+-- load another save, and everything remembered about the last world is wrong.
+--
+-- The object's address is the only handle Unreal offers for this. Addresses do
+-- get reused, so two worlds can in principle look like one; that costs a
+-- missed reset, which is the direction worth being wrong in, because the other
+-- one would throw away good baselines mid-session.
+function players.world_id()
+    local w = players.world()
+    if not w then return nil end
+    local ok, address = pcall(function() return w:GetAddress() end)
+    if ok and address then return tostring(address) end
+    return nil
+end
+
 -- Every player currently connected, as pawns.
 function players.connected()
     if not UEHelpers then return {} end
@@ -217,37 +233,66 @@ local function exp_database()
     return nil
 end
 
+-- One of "paid", "unverified", "unavailable" or "failed".
+--
+-- On the first attempt, check the XP actually moved. A call that raises is easy
+-- to notice; one that quietly does nothing would leave the pool believing it
+-- had paid everybody, forever.
+--
+-- The four answers are kept apart because only one of them says anything about
+-- the route. A call that raised is a broken route. A total that could not be
+-- read back afterwards is a bad moment -- a level-up, a respawn, a pawn
+-- streaming in -- and says nothing at all; treating it as a broken route turns
+-- one unreadable instant into a whole session with no sharing in it. A database
+-- that is not there yet is neither, and is worth waiting a tick for.
 local function grant_by_list(character, amount)
     local db = exp_database()
-    if not db then return false end
+    if not db then return "unavailable" end
 
-    -- On the first attempt, check the XP actually moved. A call that raises is
-    -- easy to notice; one that quietly does nothing would leave the pool
-    -- believing it had paid everybody, forever.
     local verify = (precise_works == nil)
     local before = verify and players.exp(character) or nil
 
     local ok = pcall(function()
         db:AddExpValue_forPlayerParty_Server(amount, { character }, true)
     end)
-    if not ok then return false end
+    if not ok then return "failed" end
+    if not verify then return "paid" end
 
-    if verify then
-        local after = players.exp(character)
-        if not (before and after and after > before) then return false end
-    end
-
-    return true
+    local after = players.exp(character)
+    if not (before and after) then return "unverified" end
+    return after > before and "paid" or "failed"
 end
+
+local said_unverified = false
+
+-- Consecutive attempts that could not find PalExpDatabase at all, and how many
+-- of those is no longer "it has not spawned yet". Waiting costs a few seconds
+-- at world load; not waiting would call a build broken over one early tick.
+local missing_database = 0
+local MISSING_DATABASE_LIMIT = 5
 
 function players.grant(character, amount)
     if not (character and character:IsValid()) then return false end
     if not amount or amount <= 0 then return false end
     if precise_works == false then return false end
 
-    local first = (precise_works == nil)
-    if grant_by_list(character, amount) then
-        if first then
+    local outcome = grant_by_list(character, amount)
+    if outcome == "unavailable" then
+        missing_database = missing_database + 1
+        if missing_database == MISSING_DATABASE_LIMIT and precise_works == nil then
+            precise_works = false
+            print(string.format(
+                "[SharedXPPool] PalExpDatabase was not found in %d attempts, so there"
+                .. " is nothing to pay anybody through -- and no safe fallback,"
+                .. " because a payout that reaches bystanders would make the pool"
+                .. " chase a moving target\n", missing_database))
+        end
+        return false
+    end
+    missing_database = 0
+
+    if outcome == "paid" then
+        if precise_works == nil then
             precise_works = true
             print("[SharedXPPool] paying via AddExpValue_forPlayerParty_Server"
                 .. " -- named recipients, nothing forwarded to bystanders\n")
@@ -255,7 +300,25 @@ function players.grant(character, amount)
         return true
     end
 
-    if first then
+    -- The payout went out and almost certainly landed; the reading that would
+    -- have proved it did not come back. Leave precise_works nil so the next
+    -- payout checks again, and say it once, so a log that never gets the
+    -- confirmation line above is not a mystery. The pool watches every later
+    -- payout land on its own, so nothing here is left permanently unchecked.
+    if outcome == "unverified" then
+        if not said_unverified then
+            said_unverified = true
+            print("[SharedXPPool] paid, but could not read the total back to confirm"
+                .. " it -- checking again on the next payout\n")
+        end
+        return true
+    end
+
+    if outcome == "unavailable" then
+        return false
+    end
+
+    if precise_works == nil then
         precise_works = false
         print("[SharedXPPool] AddExpValue_forPlayerParty_Server does not work on this"
             .. " build, and there is no safe fallback -- a payout that reaches"

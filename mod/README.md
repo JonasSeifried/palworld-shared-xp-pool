@@ -82,18 +82,31 @@ cannot loop, because every payout moves people toward a fixed point and a tick
 where everybody is level pays nothing. A failed reading costs one tick, because
 nothing is carried between ticks.
 
-Two things the rule needs:
+Three things the rule needs:
 
 **A payout that reaches only its recipient.** `AddExpValue_forPlayerParty_Server`
 names its recipients, and the first payout of a session is verified to have
 actually moved the XP. If it ever fails, the mod shares nothing and says so --
 the alternative call is a sphere that reaches bystanders, which would move the
-top every time it was approached and make the mod chase it forever.
+top every time it was approached and make the mod chase it forever. A payout
+whose result cannot be *read back* is not the same thing as one that failed, and
+is not treated as one: it is checked again next time.
 
-**A guard against a reading that is too low.** XP never decreases in Palworld, so
-a reading below that player's previous one is wrong by definition and is
-ignored. Nobody is paid on the first tick they are seen, either, in case the
-number is still settling.
+**A guard against a reading the game could not have produced.** XP never
+decreases in Palworld, so a reading below that player's previous one is wrong by
+definition; and no real total is in the billions, so one that is has been
+mangled on its way out of the engine. Both are refused, and a refused reading
+never becomes the new baseline -- otherwise the same bad reading is believed one
+tick later and the player is paid the whole pool on top of what they already
+have. Nobody is paid on the first tick they are seen, either, in case the number
+is still settling. Baselines belong to the loaded world and are dropped when a
+different one is loaded.
+
+**Evidence that payouts are landing.** After paying somebody, the next reading
+has to show their total moving. Three payouts without it -- a recipient the game
+will not take past the level cap, a patched-out function -- and they are left
+alone until it does move, rather than being paid the same gap every second for
+the rest of the session.
 
 Payouts go through the game's own XP function rather than writing the `Exp`
 field, so level-ups, the UI and replication happen normally. The mod never sets
@@ -105,14 +118,18 @@ a level -- it adds XP and the game does the rest.
 lua mod/tests/test_pool.lua
 ```
 
-Thirty tests against a stubbed UE4SS, which is the whole suite -- no game and
-no second player needed. The ones worth having:
+Thirty-eight tests against a stubbed UE4SS, which is the whole suite -- no game
+and no second player needed. The ones worth having:
 
 - everybody is brought up to the highest total, and nobody is lowered
 - it settles after one gap and stays settled
-- a reading that goes backwards is ignored
+- a bad reading is refused the *second* time it is read as well as the first
+- a reading past anything the game can produce is refused
 - a player is not paid on the first tick they are seen, and does not set the top
 - an unreadable player is skipped, and does not set the top
+- a payout that cannot be read back does not switch sharing off for the session
+- paying somebody whose total never moves stops, and resumes when it moves
+- loading a different world forgets the last one's baselines
 - nothing is shared if the precise payout does not work
 - nothing on the read path calls `StaticFindObject`
 - the shipped config arms nothing that changes a world on its own
@@ -143,8 +160,8 @@ anything is paid. Pause first, or the mod's own payouts are in the readings.
 
 `probe.lua` is a third of the mod's code and none of it runs in a normal
 session, so it is not loaded unless `debug_keys` or `probe_only` is set. Of the
-598 lines of code here, 233 are that file; the mod proper is 365, of which 184
-is reaching into Palworld through UE4SS reflection and 123 is the rule itself.
+701 lines of code here, 233 are that file; the mod proper is 468, of which 217
+is reaching into Palworld through UE4SS reflection and 192 is the rule itself.
 
 `players.lua` enumerates through `UEHelpers.GetAllPlayers`. Not
 `FindAllOf("PalPlayerState")`, which returns nothing at all on some builds --

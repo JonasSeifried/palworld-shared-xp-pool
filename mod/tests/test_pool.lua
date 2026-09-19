@@ -264,6 +264,131 @@ test("a reading that goes backwards is ignored", function()
     assert_equal(said(state, "XP does not go down"), true, "and it said so")
 end)
 
+test("a bad reading is still refused the second time it is read", function()
+    -- The dangerous shape is a bad reading that persists for more than one
+    -- tick -- a pawn reading 0 while its save data is still being applied. If
+    -- refusing it also lowered the baseline, the same 0 would be trusted one
+    -- tick later and the player paid the whole pool on top of what they have.
+    local state = fake.reset({ "P1", "P2" })
+    state.players[1]._exp, state.players[2]._exp = 1000, 1000
+    local pool = load_pool({ catch_up_rate = 1.0 })
+    settle(pool)
+
+    state.players[1]._exp = 5
+    pool.tick()
+    pool.tick()
+
+    assert_equal(#state.grants, 0, "not on the first bad reading, and not on the second")
+    assert_equal(state.players[1]._exp, 5, "so no XP was invented")
+end)
+
+test("a refusal that will not go away says what to do about it", function()
+    local state = fake.reset({ "P1", "P2" })
+    state.players[1]._exp, state.players[2]._exp = 1000, 1000
+    local pool = load_pool({ catch_up_rate = 1.0 })
+    settle(pool)
+
+    state.players[1]._exp = 5
+    for _ = 1, 6 do pool.tick() end
+
+    assert_equal(#state.grants, 0, "still nobody paid")
+    assert_equal(said(state, "restart it"), true, "and the log says how to clear it")
+end)
+
+test("a reading past anything the game can produce is refused", function()
+    -- The low guard has always been there; this is the other half. A bogus
+    -- high reading is the worse one, because it becomes the top, everybody is
+    -- paid up to it, and by the next tick that invented XP is real.
+    local state = fake.reset({ "P1", "P2" })
+    state.players[1]._exp, state.players[2]._exp = 1000, 1000
+    local pool = load_pool({ catch_up_rate = 1.0 })
+    settle(pool)
+
+    state.players[2]._exp = 18446744073709551615    -- a signed Int64 read as unsigned
+    pool.tick()
+
+    assert_equal(state.players[1]._exp, 1000, "nobody chased it")
+    assert_equal(said(state, "past anything the game can produce"), true, "and it said so")
+end)
+
+test("a payout that cannot be read back does not switch sharing off", function()
+    -- One unreadable instant right after the session's first payout -- a
+    -- level-up, a respawn -- used to latch the precise route off for the whole
+    -- session and blame the build for it, while the XP it had just paid sat in
+    -- the player's total.
+    local state = fake.reset({ "P1", "P2" })
+    state.players[1]._exp, state.players[2]._exp = 1000, 1000
+    local pool = load_pool({ catch_up_rate = 0.25 })
+    settle(pool)
+
+    state.players[2]._exp = 101000
+    local p1, fired = state.players[1], false
+    p1.IsValid = function()
+        if #state.grants > 0 and not fired then fired = true return false end
+        return true
+    end
+    pool.tick()
+    p1.IsValid = function() return true end
+
+    assert_equal(said(state, "does not work on this build"), false, "the build was not blamed")
+    for _ = 1, 60 do pool.tick() end
+    assert_equal(state.players[1]._exp, 101000, "and sharing carried on to the top")
+end)
+
+-- A route that worked and then stopped moving XP: a recipient the game will
+-- not take past the level cap, or a patched-out function. players.grant checks
+-- the first payout of a session and no others, so these start from a payout
+-- that did land -- which is exactly the session where nothing is watching.
+local function stalled(rate)
+    local state = fake.reset({ "P1", "P2" })
+    state.players[2]._exp = 1000
+    local pool = load_pool({ catch_up_rate = rate })
+    settle(pool)
+    pool.tick()                 -- one real payout, verified, route known good
+    state.grants_land = false
+    return state, pool, #state.grants
+end
+
+test("paying somebody whose total never moves stops", function()
+    local state, pool, before = stalled(0.25)
+
+    for _ = 1, 20 do pool.tick() end
+
+    assert_equal(#state.grants - before <= 4, true,
+        "it gave up after a few rather than paying every tick forever ("
+        .. (#state.grants - before) .. ")")
+    assert_equal(said(state, "not paying them again until it does"), true, "and said so")
+end)
+
+test("a payout landing again clears the giving-up", function()
+    local state, pool = stalled(0.25)
+    for _ = 1, 10 do pool.tick() end
+
+    state.grants_land = true
+    state.players[1]._exp = state.players[1]._exp + 1   -- they earn a little on their own
+    for _ = 1, 60 do pool.tick() end
+
+    assert_equal(state.players[1]._exp, 1000, "paying resumed once the total moved")
+end)
+
+test("loading a different world forgets the old baselines", function()
+    -- The Lua state outlives a loaded world. Going to the menu and loading
+    -- another save leaves every baseline describing somewhere else, and the
+    -- same players legitimately back at lower totals -- which the rule above
+    -- would otherwise refuse for the rest of the session.
+    local state = fake.reset({ "P1", "P2" })
+    state.players[1]._exp, state.players[2]._exp = 500000, 500000
+    local pool = load_pool({ catch_up_rate = 1.0 })
+    settle(pool)
+
+    state.world_id = 0x9001
+    state.players[1]._exp, state.players[2]._exp = 100, 900
+    settle(pool)
+
+    assert_equal(said(state, "a different world is loaded"), true, "the swap was noticed")
+    assert_equal(state.players[1]._exp, 900, "and the new world's own top is shared")
+end)
+
 test("a player who cannot be read is skipped, not guessed at", function()
     local state = fake.reset({ "P1", "P2", "P3" })
     state.players[3]._exp = 800
@@ -459,6 +584,17 @@ test("discovery mode arms the probe keys without being asked", function()
 
     assert_equal(type(state.keybinds[7]), "function", "F7 bound")
     assert_equal(state.keybinds[11], nil, "and nothing to pause, so no pause key")
+end)
+
+test("discovery mode does not claim the debug keys are off", function()
+    -- The point of the ready line is to report what actually got bound rather
+    -- than what was meant to be, and it listed four XP-injecting keys followed
+    -- by "(debug keys off)".
+    local state = fake.reset({ "P1" })
+    load_main({ probe_only = true, debug_keys = false })
+
+    assert_equal(said(state, "debug keys off"), false,
+        "not while F6 and F8 are bound and pay players")
 end)
 
 test("main binds every probe key", function()
