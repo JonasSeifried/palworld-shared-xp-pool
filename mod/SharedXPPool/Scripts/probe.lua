@@ -176,7 +176,7 @@ function probe.test_grant()
     -- payout skips the pal, the player being topped up ends up with pals that
     -- level slower than the player doing the killing, so it is worth knowing
     -- which way round this call behaves.
-    local pal = players.active_pal(target)
+    local pal, why_no_pal = players.active_pal(target)
     local pal_before = pal and players.exp(pal) or nil
 
     log("paying " .. players.name(target) .. " 1 xp")
@@ -212,7 +212,7 @@ function probe.test_grant()
             "(pal)", tostring(pal_before), tostring(pal_after),
             pal_delta and string.format("%+d", pal_delta) or "?"))
     else
-        log("  (no active pal out, so nothing to say about the party)")
+        log("  (could not reach the payer's pal: " .. tostring(why_no_pal) .. ")")
     end
 
     if moved == 0 then
