@@ -1,15 +1,15 @@
 # Testing this alone
 
-You do not need other players. The work splits into tiers, and only the last one
-needs a second human. Tiers 1-4 cover the save editor; tier 5 covers the live
-mod.
+You do not need other players for most of it. Tiers 1-4 cover the save editor in
+`save-editor/`; tier 5 covers the mod in `mod/`.
 
 ## Tier 1 - pool math (no game, no save files)
 
-`src/sharedxp/pool.py` is pure functions over plain dataclasses. Every rule that
-matters lives here: averaging, the never-de-level clamp, edge cases.
+`save-editor/src/sharedxp/pool.py` is pure functions over plain dataclasses.
+Every rule that matters lives here: averaging, the never-de-level clamp, edge
+cases.
 
-    .venv/Scripts/python -m pytest -q
+    cd save-editor && python -m pytest -q
 
 This is where most bugs are, and it runs in milliseconds.
 
@@ -41,7 +41,7 @@ one other person covers it.
 
 ## Tier 5 - the live mod
 
-`lua tests/lua/test_pool.lua` runs the mod's logic against a stubbed UE4SS: no
+`lua mod/tests/test_pool.lua` runs the mod's logic against a stubbed UE4SS: no
 game, no Palworld, no second player. It covers the rule, the reading guards and
 the refusal to share through a payout that would reach bystanders.
 

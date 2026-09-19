@@ -1,6 +1,6 @@
--- Run: lua tests/lua/test_pool.lua   (from the repo root)
+-- Run: lua mod/tests/test_pool.lua   (from the repo root)
 
-package.path = "tests/lua/?.lua;mod/SharedXPPool/Scripts/?.lua;" .. package.path
+package.path = "mod/tests/?.lua;mod/SharedXPPool/Scripts/?.lua;" .. package.path
 
 local fake = require("fake_ue4ss")
 local real_print = print

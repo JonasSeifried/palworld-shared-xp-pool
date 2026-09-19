@@ -102,7 +102,7 @@ a level -- it adds XP and the game does the rest.
 ## Testing
 
 ```
-lua tests/lua/test_pool.lua
+lua mod/tests/test_pool.lua
 ```
 
 Thirty tests against a stubbed UE4SS. `pytest` runs them too, and skips if
