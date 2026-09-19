@@ -45,6 +45,7 @@ end
 
 bind(Key.F7, "F7 dump_players", probe.dump_players)
 bind(Key.F8, "F8 test_grant", probe.test_grant)
+bind(Key.F9, "F9 dump_exp_api", probe.dump_exp_api)
 
 -- Report what actually got bound rather than what was meant to be. A key that
 -- silently failed to register looks exactly like a key that does nothing when

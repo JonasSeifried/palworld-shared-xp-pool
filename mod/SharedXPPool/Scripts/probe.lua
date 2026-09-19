@@ -132,9 +132,28 @@ function probe.dump_players()
     end
 end
 
--- Granting is the one Palworld-specific call the mod still makes, and the only
--- one not yet proven safe here. It gets its own key so that if it crashes, it
--- crashes alone and the log says which line did it.
+local function distance(a, b)
+    local ok, d = pcall(function()
+        local pa, pb = a:K2_GetActorLocation(), b:K2_GetActorLocation()
+        local dx, dy, dz = pa.X - pb.X, pa.Y - pb.Y, pa.Z - pb.Z
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
+    end)
+    if ok then return d end
+    return nil
+end
+
+-- Pay one player 1 XP and measure who actually received it.
+--
+-- Paying one player raised the other in the first two-player run, and the
+-- amount is not the question -- who it reaches is. If only the recipient moves,
+-- the payout is precise. If everyone moves, the distance between them says
+-- whether it is the game's nearby-player sharing forwarding it (in which case
+-- standing apart will stop it, and the mod's normal top-up never fires when
+-- players are together anyway) or something that ignores distance entirely (in
+-- which case this function is the wrong one to grant with).
+--
+-- Run it once standing next to each other, once far apart. The difference is
+-- the answer.
 function probe.test_grant()
     local players = require("players")
 
@@ -146,22 +165,82 @@ function probe.test_grant()
         return
     end
 
-    local target = list[1]
-    local before = players.exp(target)
-    log("before: " .. players.name(target) .. " has " .. tostring(before) .. " xp")
+    local before = {}
+    for i, character in ipairs(list) do
+        before[i] = players.exp(character)
+    end
 
-    log("about to call PalUtility:GiveExpToAroundPlayerCharacter with 1 xp")
+    local target = list[1]
+    log("paying " .. players.name(target) .. " 1 xp via PalUtility:GiveExpToAroundPlayerCharacter")
     local ok = players.grant(target, 1)
     log("call returned: " .. tostring(ok))
 
-    local after = players.exp(target)
-    log("after: " .. tostring(after) .. " xp")
+    local moved = 0
+    for i, character in ipairs(list) do
+        local after = players.exp(character)
+        local delta = (after and before[i]) and (after - before[i]) or nil
+        local away = (i == 1) and 0 or distance(character, target)
 
-    if before and after and after > before then
-        log("OK -- payout works. Set probe_only = false in config.lua.")
+        log(string.format("  %-16s %s -> %s  (%+s xp)  %s",
+            players.name(character),
+            tostring(before[i]), tostring(after),
+            tostring(delta),
+            i == 1 and "<- the one being paid"
+                or ("distance " .. (away and string.format("%.0f", away) or "?"))))
+
+        if delta and delta > 0 then moved = moved + 1 end
+    end
+
+    if moved == 0 then
+        log("PROBLEM -- nobody gained anything.")
+    elseif moved == 1 then
+        log("OK -- the payout reached only its target.")
     else
-        log("PROBLEM -- xp did not move. The call may need a different world, "
-            .. "radius or argument order.")
+        log("LEAK -- the payout reached " .. moved .. " players. Note the "
+            .. "distances above, then run this again standing far apart.")
+    end
+end
+
+-- What the exp-granting functions actually take. Reading a UFunction's
+-- parameter list cannot crash anything, unlike calling it with guessed
+-- arguments -- and GiftPlayer / ExpValue appear in the binary's name table next
+-- to these functions, which hints at a way to pay exactly one player with no
+-- sphere involved at all.
+function probe.dump_exp_api()
+    local FUNCTIONS = {
+        "/Script/Pal.PalExpDatabase:AddExpValue_forPlayerParty_Server",
+        "/Script/Pal.PalExpDatabase:DistributionExpValue_forPlayerParty_Server",
+        "/Script/Pal.PalExpDatabase:AddExp_forPlayerParty_ByExpCalcType",
+        "/Script/Pal.PalUtility:GiveExpToAroundPlayerCharacter",
+        "/Script/Pal.PalUtility:GiveExpToAroundCharacter",
+    }
+
+    log("---- exp api ----")
+
+    for _, path in ipairs(FUNCTIONS) do
+        local found, fn = pcall(StaticFindObject, path)
+        if not (found and fn and fn:IsValid()) then
+            log(path .. "  -- not found")
+        else
+            local params = {}
+            local ok = pcall(function()
+                fn:ForEachProperty(function(property)
+                    local name = property:GetFName():ToString()
+                    local kind = property:GetClass():GetFName():ToString()
+                    params[#params + 1] = name .. ": " .. kind
+                end)
+            end)
+
+            if ok then
+                log(path)
+                for i, p in ipairs(params) do
+                    log("    " .. i .. ". " .. p)
+                end
+                if #params == 0 then log("    (no parameters reported)") end
+            else
+                log(path .. "  -- could not read its parameters")
+            end
+        end
     end
 end
 

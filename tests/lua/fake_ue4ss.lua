@@ -154,9 +154,9 @@ function fake.install()
     _G.RegisterHook = function(path, callback) state.hooks[path] = callback return 1, 2 end
     _G.RegisterKeyBind = function(key, handler) state.keybinds[key] = handler end
     _G.ExecuteWithDelay = function() end
-    -- Distinct values, so a test can tell the two keys apart rather than
-    -- watching them overwrite each other at index 0.
-    _G.Key = { F7 = 7, F8 = 8 }
+    -- Distinct values, so a test can tell the keys apart rather than watching
+    -- them overwrite each other at index 0.
+    _G.Key = { F7 = 7, F8 = 8, F9 = 9 }
     _G.print = function(line) state.output[#state.output + 1] = line end
 end
 

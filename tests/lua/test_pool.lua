@@ -300,7 +300,7 @@ test("reading never touches PalUtility", function()
     assert_equal(reached, false, "PalUtility was left alone")
 end)
 
-test("main binds both probe keys", function()
+test("main binds every probe key", function()
     -- This is here because F8 once did nothing at all in game: an edit to
     -- main.lua silently failed to apply, the key was never registered, and an
     -- unbound key looks exactly like a working key whose handler does nothing.
@@ -316,9 +316,13 @@ test("main binds both probe keys", function()
 
     assert_equal(type(state.keybinds[7]), "function", "F7 bound")
     assert_equal(type(state.keybinds[8]), "function", "F8 bound")
+    assert_equal(type(state.keybinds[9]), "function", "F9 bound")
 
+    -- Pressing each must not raise, including F9 against a world where none of
+    -- the exp functions can be found.
     state.keybinds[7]()
     state.keybinds[8]()
+    state.keybinds[9]()
 end)
 
 real_print(string.format("\n%d passed, %d failed", passed, failed))
