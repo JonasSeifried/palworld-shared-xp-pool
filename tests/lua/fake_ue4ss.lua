@@ -34,6 +34,10 @@ function fake.reset(player_names)
         -- Set by make_property when a type-specific accessor is used on the
         -- wrong property kind, which in game is a crash rather than an error.
         unsafe_property_access = false,
+        -- Whether the list-based payout can be reached at all, so a test can
+        -- force the radius fallback.
+        precise_available = true,
+        sphere_calls = 0,
     }
 
     for i, name in ipairs(player_names or {}) do
@@ -111,12 +115,26 @@ local utility = {
             error("GiveExpToAroundPlayerCharacter: nobody at that location")
         end
 
+        state.sphere_calls = state.sphere_calls + 1
         state.grants[#state.grants + 1] = { character = target, amount = amount }
 
         for _, p in ipairs(state.players) do
             if p == target or state.propagate then
                 p._exp = p._exp + amount
             end
+        end
+    end,
+}
+
+-- The list-based payout: it names its recipients, so nothing is forwarded to
+-- bystanders even when the game would otherwise share.
+local exp_database = {
+    IsValid = function() return true end,
+    GetFullName = function() return "BP_PalExpDatabase_C /Engine/Transient.fake" end,
+    AddExpValue_forPlayerParty_Server = function(_, amount, gift_list, _)
+        for _, character in ipairs(gift_list) do
+            character._exp = character._exp + amount
+            state.grants[#state.grants + 1] = { character = character, amount = amount }
         end
     end,
 }
@@ -219,6 +237,9 @@ function fake.install()
 
     _G.FindFirstOf = function(class)
         if class == "World" then return { IsValid = function() return true end } end
+        if class == "PalExpDatabase" and state.precise_available then
+            return exp_database
+        end
         return nil
     end
 

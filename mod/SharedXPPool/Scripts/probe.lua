@@ -322,8 +322,15 @@ function probe.dump_exp_api()
     log("looking for a live PalExpDatabase to call:")
     for _, how in ipairs({ "PalExpDatabase", "PalExpDatabaseBase" }) do
         local ok, found = pcall(FindFirstOf, how)
-        log(string.format("  FindFirstOf(%q) -> %s", how,
-            (ok and found and found:IsValid()) and found:GetFullName() or "nothing"))
+        local description = "nothing"
+        if ok and found then
+            local valid = pcall(function() return found:IsValid() end)
+            if valid then
+                local named, full = pcall(function() return found:GetFullName() end)
+                description = (named and full) or "found, but it will not name itself"
+            end
+        end
+        log(string.format("  FindFirstOf(%q) -> %s", how, description))
     end
 end
 

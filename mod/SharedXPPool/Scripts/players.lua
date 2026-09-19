@@ -175,23 +175,67 @@ function players.name(character)
     return "?"
 end
 
--- Grant XP by calling the game's own exp-giving function at the recipient's
--- feet, with a radius small enough to reach nobody else. Going through the game
--- means level-ups, UI and replication happen normally; writing the Exp field
--- directly would skip all of that.
+-- Paying a player.
 --
--- This is the one Palworld-specific call left, and it is the one that has not
--- been proven safe on this build. probe.test_grant puts it behind its own key
--- so that if it crashes, it crashes on its own and says so.
+-- Both routes go through the game rather than writing the Exp field, so
+-- level-ups, UI and replication happen the way they normally do.
 --
--- The radius is not zero because the call is a sphere overlap and the player's
--- own capsule has to fall inside it.
+-- The preferred one names its recipients outright:
+--
+--   AddExpValue_forPlayerParty_Server(ExpValue: Int64,
+--                                     GiftPlayerList: Array of PalPlayerCharacter,
+--                                     isCallDelegate: Bool)
+--
+-- No centre, no radius, nothing for the game to forward. That matters, because
+-- the radius call leaks: measured in game, paying one player 1 XP while another
+-- stood next to them gave the payer 2 and the other 1, and standing apart gave
+-- exactly 1 each. The sphere is not the problem -- Palworld's own nearby-player
+-- sharing forwards whatever lands in it -- so no radius setting fixes it, and
+-- the only real answer is not to use a sphere.
+--
+-- The radius call stays as a fallback, since it is proven to work on this build
+-- and a leaky payout beats none.
+
 local GRANT_RADIUS = 50.0
 
-function players.grant(character, amount)
-    if not (character and character:IsValid()) then return false end
-    if not amount or amount <= 0 then return false end
+local database = nil
+-- nil until the list-based call has been tried, then true or false for good.
+local precise_works = nil
 
+local function exp_database()
+    if database and database:IsValid() then return database end
+    local ok, found = pcall(FindFirstOf, "PalExpDatabase")
+    if ok and found and found:IsValid() then
+        database = found
+        return database
+    end
+    return nil
+end
+
+local function grant_by_list(character, amount)
+    local db = exp_database()
+    if not db then return false end
+
+    -- On the first attempt, check the XP actually moved. A call that raises is
+    -- easy to notice; one that quietly does nothing would leave the pool
+    -- believing it had paid everybody, forever.
+    local verify = (precise_works == nil)
+    local before = verify and players.exp(character) or nil
+
+    local ok = pcall(function()
+        db:AddExpValue_forPlayerParty_Server(amount, { character }, true)
+    end)
+    if not ok then return false end
+
+    if verify then
+        local after = players.exp(character)
+        if not (before and after and after > before) then return false end
+    end
+
+    return true
+end
+
+local function grant_by_sphere(character, amount)
     local w = players.world()
     if not w then return false end
 
@@ -201,9 +245,41 @@ function players.grant(character, amount)
     local ok, location = pcall(function() return character:K2_GetActorLocation() end)
     if not (ok and location) then return false end
 
+    -- The radius is not zero because the call is a sphere overlap and the
+    -- player's own capsule has to fall inside it.
     return pcall(function()
         utility:GiveExpToAroundPlayerCharacter(w, location, GRANT_RADIUS, amount, true)
     end)
+end
+
+function players.grant(character, amount)
+    if not (character and character:IsValid()) then return false end
+    if not amount or amount <= 0 then return false end
+
+    if precise_works ~= false then
+        local first = (precise_works == nil)
+        if grant_by_list(character, amount) then
+            if first then
+                precise_works = true
+                print("[SharedXPPool] paying via AddExpValue_forPlayerParty_Server"
+                    .. " -- named recipients, no radius\n")
+            end
+            return true
+        end
+
+        if first then
+            precise_works = false
+            print("[SharedXPPool] AddExpValue_forPlayerParty_Server did not work here;"
+                .. " falling back to the radius call, which leaks to nearby players\n")
+        end
+    end
+
+    return grant_by_sphere(character, amount)
+end
+
+-- Which route is in use: true, false, or nil before anything has been paid.
+function players.precise_payout()
+    return precise_works
 end
 
 return players

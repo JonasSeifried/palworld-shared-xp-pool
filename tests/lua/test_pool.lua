@@ -334,6 +334,74 @@ test("main binds every probe key", function()
     end
 end)
 
+test("payouts name their recipient instead of using a sphere", function()
+    local state = fake.reset({ "Jonas", "Keddo" })
+    local pool = load_pool()
+
+    pool.tick()
+    state.players[1]._exp = state.players[1]._exp + 100
+    pool.tick()
+
+    assert_equal(state.sphere_calls, 0, "the radius call was not used")
+    assert_equal(state.players[2]._exp, 100, "Keddo was paid")
+end)
+
+test("a named payout does not leak, even where the sphere would", function()
+    -- propagate is what the game does to anything landing in a sphere: paying
+    -- one player raised the other. Naming recipients removes the sphere, so
+    -- there is nothing to forward.
+    local state = fake.reset({ "Jonas", "Keddo" })
+    state.propagate = true
+    local pool = load_pool()
+
+    pool.tick()
+    state.players[1]._exp = state.players[1]._exp + 100
+    pool.tick()
+
+    local got = exp_by_name(state)
+    assert_equal(got["Jonas"], 100, "the payer gained only what they earned")
+    assert_equal(got["Keddo"], 100, "and the other exactly matched them")
+end)
+
+test("the radius call is used when the named one is unreachable", function()
+    local state = fake.reset({ "Jonas", "Keddo" })
+    state.precise_available = false
+    local pool = load_pool()
+
+    pool.tick()
+    state.players[1]._exp = state.players[1]._exp + 100
+    pool.tick()
+
+    assert_equal(state.sphere_calls, 1, "fell back to the radius call")
+    assert_equal(state.players[2]._exp, 100, "Keddo was still paid")
+
+    local said = false
+    for _, line in ipairs(state.output) do
+        if line:find("falling back") then said = true end
+    end
+    assert_equal(said, true, "and it said so")
+end)
+
+test("a named payout that silently does nothing falls back", function()
+    -- A call that raises is easy to notice. One that quietly succeeds without
+    -- moving any XP would leave the pool believing it had paid everyone,
+    -- forever, and nobody would ever receive anything.
+    local state = fake.reset({ "Jonas", "Keddo" })
+    local pool = load_pool()
+    local players = require("players")
+
+    local db = FindFirstOf("PalExpDatabase")
+    db.AddExpValue_forPlayerParty_Server = function() end  -- accepts, does nothing
+
+    pool.tick()
+    state.players[1]._exp = state.players[1]._exp + 100
+    pool.tick()
+
+    assert_equal(players.precise_payout(), false, "the named route was rejected")
+    assert_equal(state.sphere_calls, 1, "and the radius call covered it")
+    assert_equal(state.players[2]._exp, 100, "Keddo was paid either way")
+end)
+
 test("reading a parameter never uses the wrong accessor for its kind", function()
     -- F9 killed the game outright by asking every parameter for GetInner,
     -- GetPropertyClass and GetStruct. Those read a field that only exists on
