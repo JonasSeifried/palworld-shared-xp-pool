@@ -15,13 +15,38 @@ else
     require("pool").start()
 end
 
--- The player dump needs a loaded world, which does not exist at mod load time,
--- so it goes on a key. F7 in game, output to UE4SS.log.
-RegisterKeyBind(Key.F7, function()
-    local ok, err = pcall(probe.dump_players)
-    if not ok then
-        print("[SharedXPPool] dump_players failed: " .. tostring(err) .. "\n")
-    end
-end)
+-- These need a loaded world, which does not exist at mod load time, so they go
+-- on keys. Output goes to UE4SS.log.
+--
+-- Reading and paying are on separate keys deliberately. Paying is the one call
+-- left that could take the game down, so it must never fire as a side effect of
+-- looking.
+local bound = {}
 
-print("[SharedXPPool] ready -- press F7 in game to dump what the mod can see\n")
+local function bind(key, name, fn)
+    if key == nil then
+        print("[SharedXPPool] cannot bind " .. name .. ": no such key in this UE4SS build\n")
+        return
+    end
+
+    local ok, err = pcall(RegisterKeyBind, key, function()
+        local ran, why = pcall(fn)
+        if not ran then
+            print("[SharedXPPool] " .. name .. " failed: " .. tostring(why) .. "\n")
+        end
+    end)
+
+    if ok then
+        bound[#bound + 1] = name
+    else
+        print("[SharedXPPool] could not bind " .. name .. ": " .. tostring(err) .. "\n")
+    end
+end
+
+bind(Key.F7, "F7 dump_players", probe.dump_players)
+bind(Key.F8, "F8 test_grant", probe.test_grant)
+
+-- Report what actually got bound rather than what was meant to be. A key that
+-- silently failed to register looks exactly like a key that does nothing when
+-- pressed, and one of those is a bug in here.
+print("[SharedXPPool] ready -- bound: " .. table.concat(bound, ", ") .. "\n")

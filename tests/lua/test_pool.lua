@@ -228,5 +228,26 @@ test("reading never touches PalUtility", function()
     assert_equal(reached, false, "PalUtility was left alone")
 end)
 
+test("main binds both probe keys", function()
+    -- This is here because F8 once did nothing at all in game: an edit to
+    -- main.lua silently failed to apply, the key was never registered, and an
+    -- unbound key looks exactly like a working key whose handler does nothing.
+    -- Loading main.lua for real is the only way to catch that.
+    local state = fake.reset({ "Jonas" })
+    package.loaded["probe"] = nil
+    package.loaded["players"] = nil
+    package.loaded["config"] = nil
+    package.loaded["UEHelpers"] = nil
+
+    dofile("mod/SharedXPPool/Scripts/main.lua")
+
+    assert_equal(type(state.keybinds[7]), "function", "F7 bound")
+    assert_equal(type(state.keybinds[8]), "function", "F8 bound")
+
+    -- And pressing them must not raise out of the handler.
+    state.keybinds[7]()
+    state.keybinds[8]()
+end)
+
 real_print(string.format("\n%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)
