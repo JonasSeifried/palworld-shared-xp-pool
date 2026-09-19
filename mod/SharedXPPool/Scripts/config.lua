@@ -58,6 +58,33 @@ config.divide_among_players = false
 -- as soon as the people behind are playing at all.
 config.catch_up = true
 
+-- How far apart two players have to be before the game stops sharing XP between
+-- them, in Unreal units. nil leaves this off.
+--
+-- This is the one thing the pool cannot work out from XP totals alone. When two
+-- players both gain in the same second, it has to decide whether that was one
+-- kill the game shared with both of them, or two separate kills. Top up to the
+-- larger and two separate kills collapse into one; add them together and every
+-- shared kill counts twice. Distance is what tells them apart: an award has a
+-- radius, so players outside it cannot have received each other's.
+--
+-- Off until it has been measured on your build, because the two ways of being
+-- wrong are not equal. Too large, and players who really were apart get treated
+-- as together -- the pool under-shares, which is what it does today anyway. Too
+-- small, and players who were sharing get counted twice, which invents XP.
+--
+-- config.watch_rises below is how to measure it: it prints who gained what and
+-- how far apart everyone was, so a session of ordinary play shows the distance
+-- at which one player's kill stops moving the other player's total.
+config.share_radius = nil
+
+-- Log every player's gain and the distance between them, once per tick.
+--
+-- For answering the question above, and for anything else where what matters is
+-- what the game did rather than what the pool did. Pause with the pause key
+-- while measuring, or the pool's own payouts appear in the readings.
+config.watch_rises = false
+
 -- Bind the probe keys (F6/F7/F8/F9) when the mod is live.
 --
 -- Off, and that is not tidiness. F6 and F8 inject XP into the world, and F9

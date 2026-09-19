@@ -164,6 +164,19 @@ function players.key(character)
     return nil
 end
 
+-- Straight-line distance between two characters, in Unreal units, or nil if
+-- either position cannot be read. Used to tell players the game has already
+-- shared XP between from players who are too far apart for that.
+function players.distance(a, b)
+    local ok, d = pcall(function()
+        local pa, pb = a:K2_GetActorLocation(), b:K2_GetActorLocation()
+        local dx, dy, dz = pa.X - pb.X, pa.Y - pb.Y, pa.Z - pb.Z
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
+    end)
+    if ok then return d end
+    return nil
+end
+
 function players.name(character)
     if not (character and character:IsValid()) then return "?" end
 

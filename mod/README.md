@@ -230,9 +230,11 @@ first -- see below.
 That is not a multiplier. Palworld already gives full XP to every player
 standing nearby, so a group playing together shares nothing today -- and the
 top-up rule correctly does nothing in that case, because they all rose together.
-What it removes is the distance limit, so a group that splits up progresses like
-a group that sticks together. Nobody falls behind for going off to do their own
-thing.
+What it adds is that nobody falls behind the best earner for going off to do
+their own thing.
+
+It is not yet true that a group which splits up progresses like a group that
+sticks together. See the next section for why, and what it would take.
 
 `config.divide_among_players` targets the average rise instead of the best. The
 group then gains roughly what one player earned rather than matching the best
@@ -274,6 +276,57 @@ wrong offset and kill the process, and `pcall` does not catch it. Asking every
 parameter for all three crashed the game on the first one. A test now fails if
 the code does that again.
 
+## The one thing totals cannot tell you
+
+Two players both gain inside the same second. Either the game gave one kill to
+both of them, or they each killed something of their own. In the totals those are
+identical, and they call for opposite responses: a shared kill means do nothing,
+two kills mean give each player the other's as well.
+
+The pool takes the smaller answer, because under-sharing is recoverable and
+inventing XP is not. The cost is real:
+
+```
+two players, kills worth 20 and 30 in the same second
+
+  standing together    +50 each   the game shared both, and the pool leaves it
+  far apart            +30 each   should be +50; the smaller kill is lost
+  far apart, equal     +20 each   should be +40; the pool does nothing at all
+```
+
+The last line is the ordinary case -- two people grinding in different places at
+similar rates -- and it is why the mod does not really pool XP yet.
+
+**`config.share_radius`** settles it, because an award has a radius and players
+outside it cannot have received each other's. Players closer than the radius
+count once; players further apart add up. It is off until measured, since the
+two ways of being wrong are not equal: too large behaves like today, too small
+invents XP.
+
+**`config.watch_rises`** is how to measure it. Once a tick it logs who gained
+what, and how far apart everyone was:
+
+```
+[SharedXPPool] watch  Tondoa +20  Keddo +0  |  Tondoa-Keddo 18300
+```
+
+Pause sharing first with the pause key, or the pool's own payouts turn up in the
+readings. An evening of ordinary play then shows the distance at which one
+player's kill stops moving the other player's total.
+
+**Better still, if it turns out to exist:** widen Palworld's own radius instead
+of working around it. Then the game hands every award to everybody itself, with
+the right amounts, the right pal XP and the right level-ups, and none of the
+above is needed -- there is never a tick where one player gained and another did
+not, so there is nothing left to infer.
+
+The kill path offers no way in: kills fire `AddExp_EnemyDeath` and not
+`GiveExpToAroundPlayerCharacter`, so the sharing happens inside native code with
+no reflected radius to intercept. A property on a live object is the remaining
+possibility, and `BP_PalExpDatabase_C` is a Blueprint, so it may well expose one.
+**F9** now hunts for one and marks anything plausible with `***`. Worth pressing
+before relying on `share_radius` at all.
+
 ## Closing a gap that already exists
 
 Topping everyone up to the best rise equalises how fast people gain, not how
@@ -302,9 +355,12 @@ catch_up on    P1 +40, P2 +0,  P3 +20    60 created, P1 closes on both
 Whoever of the three earns the 20, the other 40 goes to P1, because P1 is
 furthest behind. Once P1 is level with P2 the two of them share it, and so on.
 
-**Nobody is raised above the player in front.** When the budget is larger than
-the room available the remainder is simply not paid, rather than carrying
-somebody past the person they were chasing.
+**Nobody is raised above the player in front.** Filling valleys cannot lift
+anyone over somebody who was above them -- it levels them and stops. The ceiling
+on top of that is where the furthest-ahead player would have finished under the
+flat rule, so the whole budget always has somewhere to go. An earlier version
+capped at the highest *total* instead, which left no room above the leader on a
+tick where everybody was owed something, and quietly dropped the difference.
 
 **The limit, stated deliberately:** a gap does not close while only the player
 in front is earning. Every point they gain is a point they created, so nobody
@@ -339,7 +395,7 @@ income. Sharing the tree is a v2 decision.
 | `Scripts/config.lua` | every knob, with the reasoning next to it |
 | `Scripts/pool.lua` | watching totals and sharing the difference |
 | `Scripts/players.lua` | finding players, reading their XP, paying them |
-| `Scripts/probe.lua` | discovery: the hooks, and the F7 dump |
+| `Scripts/probe.lua` | discovery: the hooks, the F7 dump, the F9 radius hunt |
 
 `players.lua` enumerates through `UEHelpers.GetAllPlayers`. Not
 `FindAllOf("PalPlayerState")`, which returns nothing at all on some builds --
@@ -355,7 +411,7 @@ worked.
 lua tests/lua/test_pool.lua
 ```
 
-Thirty-five tests against a stubbed UE4SS. The fake models what the game actually
+Forty-two tests against a stubbed UE4SS. The fake models what the game actually
 does, which is the part that matters: a payout really moves the number, and in
 `propagate` mode it moves *everyone's*, the way paying one player raised the
 other in game.
@@ -374,6 +430,9 @@ The ones worth having:
 - the pool never creates more than the rise times the players
 - nobody is ever raised above the player in front
 - a gap closes when the people behind are playing too
+- players too far apart to have shared add their gains together
+- players close enough to have shared are still counted once
+- a distance that cannot be read merges rather than splits
 
 Each was checked by breaking the code it defends and watching it go red. The
 first one only exists because removing the re-read broke nothing in the suite --

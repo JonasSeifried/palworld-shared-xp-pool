@@ -59,8 +59,11 @@ function fake.add_player(name, exp, level)
         IsValid = function() return true end,
         GetAddress = function(self) return 0x1000 + self._index end,
         -- Distinct positions: the real grant resolves a recipient by
-        -- overlapping a sphere at a point.
-        K2_GetActorLocation = function(self) return { X = self._index * 10000, Y = 0, Z = 0 } end,
+        -- overlapping a sphere at a point. Set _x to place players a chosen
+        -- distance apart.
+        K2_GetActorLocation = function(self)
+            return { X = self._x or (self._index * 10000), Y = 0, Z = 0 }
+        end,
         GetCharacterParameterComponent = function(self)
             return { GetIndividualParameter = function() return make_parameter(self) end }
         end,
@@ -92,6 +95,10 @@ end
 function fake.param(value)
     return { get = function() return value end }
 end
+
+-- Declared ahead of use: the exp database below builds properties with it, and
+-- it is defined further down alongside the other reflection stand-ins.
+local make_property
 
 local utility = {
     IsValid = function() return true end,
@@ -137,9 +144,28 @@ local utility = {
 
 -- The list-based payout: it names its recipients, so nothing is forwarded to
 -- bystanders even when the game would otherwise share.
+-- Stand-in properties for the share-radius hunt. Both names are invented for
+-- the test; neither is a name observed in Palworld.
+local exp_database_properties = {
+    { name = "NearbyShareRadius", kind = "FloatProperty", value = 1500.0 },
+    { name = "ExpRateScale", kind = "FloatProperty", value = 1.0 },
+    { name = "CachedTable", kind = "StructProperty" },
+}
+
 local exp_database = {
     IsValid = function() return true end,
     GetFullName = function() return "BP_PalExpDatabase_C /Engine/Transient.fake" end,
+    NearbyShareRadius = 1500.0,
+    ExpRateScale = 1.0,
+    GetClass = function()
+        return {
+            ForEachProperty = function(_, visit)
+                for _, p in ipairs(exp_database_properties) do
+                    visit(make_property(p.name, p.kind))
+                end
+            end,
+        }
+    end,
     AddExpValue_forPlayerParty_Server = function(_, amount, gift_list, _)
         for _, character in ipairs(gift_list) do
             character._exp = character._exp + amount
@@ -178,7 +204,7 @@ local function named(text)
     return { GetFName = function() return { ToString = function() return text end } end }
 end
 
-local function make_property(name, kind, extras)
+function make_property(name, kind, extras)
     extras = extras or {}
     local property = named(name)
     property.GetClass = function() return named(kind) end

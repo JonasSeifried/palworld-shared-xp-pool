@@ -32,6 +32,14 @@
 -- missed is rebaselined on their next reading rather than counted, the same way
 -- somebody who just joined is.
 --
+-- What none of that settles is how much was earned in the first place, when
+-- two players both gain inside the same tick. One kill the game shared with both
+-- of them, and two separate kills, look identical in the totals. Taking the
+-- larger loses the second kill; adding them counts a shared one twice. The mod
+-- takes the larger, because under-sharing is recoverable and inventing XP is
+-- not -- and config.share_radius lifts the ambiguity where it is set, since an
+-- award has a radius and players outside it cannot have received each other's.
+--
 -- On top of those three, config.catch_up decides where a tick's budget goes.
 -- The budget is the same either way -- the best rise times the number of
 -- players -- but paying each player their own shortfall preserves whatever gap
@@ -83,6 +91,86 @@ local function rebaseline(connected, keys, totals)
             end
         end
     end
+end
+
+-- What the group actually earned this tick.
+--
+-- Players close enough for the game to have shared between them saw the same
+-- earning twice, so they count once, as the largest rise among them. Players too
+-- far apart for that earned separately, so their rises add up.
+--
+-- Without a radius everybody is one group and this is just the best rise, which
+-- is the old behaviour exactly.
+--
+-- A distance that cannot be read merges the pair, which is the cautious
+-- direction: merging can only under-share, splitting can invent XP.
+local function pooled_rise(connected, rises, best)
+    local radius = config.share_radius
+    if not radius or radius <= 0 then return best end
+
+    local n = #connected
+    local parent = {}
+    for i = 1, n do parent[i] = i end
+
+    local function find(i)
+        while parent[i] ~= i do
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        end
+        return i
+    end
+
+    for a = 1, n do
+        for b = a + 1, n do
+            local away = players.distance(connected[a], connected[b])
+            if away == nil or away <= radius then
+                local ra, rb = find(a), find(b)
+                if ra ~= rb then parent[ra] = rb end
+            end
+        end
+    end
+
+    local group_best = {}
+    for i = 1, n do
+        local rise = rises[i]
+        if rise then
+            local root = find(i)
+            if not group_best[root] or rise > group_best[root] then
+                group_best[root] = rise
+            end
+        end
+    end
+
+    local total = 0
+    for _, v in pairs(group_best) do total = total + v end
+    return total
+end
+
+-- What the game did this tick, as opposed to what the pool did about it. The
+-- distances are the point: they are what says whether two players who both
+-- gained were close enough for the game to have shared it.
+local function watch(connected, rises)
+    local gained, parts = false, {}
+    for i = 1, #connected do
+        local rise = rises[i]
+        if rise and rise > 0 then gained = true end
+        parts[#parts + 1] = players.name(connected[i])
+            .. " " .. (rise and string.format("%+d", rise) or "?")
+    end
+    if not gained then return end
+
+    local gaps = {}
+    for a = 1, #connected do
+        for b = a + 1, #connected do
+            local away = players.distance(connected[a], connected[b])
+            gaps[#gaps + 1] = string.format("%s-%s %s",
+                players.name(connected[a]), players.name(connected[b]),
+                away and string.format("%.0f", away) or "?")
+        end
+    end
+
+    print("[SharedXPPool] watch  " .. table.concat(parts, "  ")
+        .. (#gaps > 0 and ("  |  " .. table.concat(gaps, "  ")) or "") .. "\n")
 end
 
 -- Who gets the budget, when catching up is on.
@@ -156,13 +244,6 @@ local function tick()
 
     local totals = read_totals(connected, keys)
 
-    -- Paused still reads and still moves the baselines forward, so resuming
-    -- does not pay out everything earned while it was off.
-    if paused then
-        rebaseline(connected, keys, totals)
-        return
-    end
-
     -- How much each player gained since the last look. A player we have not
     -- seen before gets a baseline and sits this tick out: their existing XP is
     -- not something they just earned.
@@ -213,14 +294,29 @@ local function tick()
     end
     last_unreadable = unreadable
 
+    if config.watch_rises then watch(connected, rises) end
+
+    -- Paused still reads and still moves the baselines forward, so resuming
+    -- does not pay out everything earned while it was off. It reads after the
+    -- rises are worked out rather than before, so watching works while paused --
+    -- which is the only way to see what the game does rather than the pool.
+    if paused then
+        rebaseline(connected, keys, totals)
+        return
+    end
+
     if #connected < 2 or best <= 0 or counted == 0 then
         rebaseline(connected, keys, totals)
         return
     end
 
-    -- Everyone should end this tick having gained as much as the best earner.
-    local target = best * config.share_rate
+    -- Everyone should end this tick having gained as much as the group earned:
+    -- the best rise, or the rises of separated players added together where
+    -- config.share_radius says the game cannot have shared them.
+    local target = pooled_rise(connected, rises, best) * config.share_rate
     if config.divide_among_players then
+        -- Untouched by grouping. This mode already adds every rise together, so
+        -- it has the opposite bias to begin with.
         target = (sum * config.share_rate) / counted
     end
     target = math.floor(target)
@@ -237,10 +333,22 @@ local function tick()
         for i = 1, #connected do
             if keys[i] and totals[i] then
                 entries[#entries + 1] = { index = i, total = totals[i] }
-                if not ceiling or totals[i] > ceiling then ceiling = totals[i] end
+
+                local rise = rises[i]
+                local owed = (rise and rise < target) and (target - rise) or 0
+                budget = budget + owed
+
+                -- The ceiling is where this player would have finished under
+                -- the flat rule -- their total plus what they were owed -- and
+                -- the highest of those is nobody's business to pass.
+                --
+                -- Not simply the highest total. That version could not pay out
+                -- a tick where everybody was owed something, since there would
+                -- be no room above the leader to put it, and the budget would
+                -- be quietly dropped instead.
+                local ends_at = totals[i] + owed
+                if not ceiling or ends_at > ceiling then ceiling = ends_at end
             end
-            local rise = rises[i]
-            if rise and rise < target then budget = budget + (target - rise) end
         end
 
         -- Note what this budget is: summed over everybody, target - rise is

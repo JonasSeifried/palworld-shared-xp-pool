@@ -132,16 +132,6 @@ function probe.dump_players()
     end
 end
 
-local function distance(a, b)
-    local ok, d = pcall(function()
-        local pa, pb = a:K2_GetActorLocation(), b:K2_GetActorLocation()
-        local dx, dy, dz = pa.X - pb.X, pa.Y - pb.Y, pa.Z - pb.Z
-        return math.sqrt(dx * dx + dy * dy + dz * dz)
-    end)
-    if ok then return d end
-    return nil
-end
-
 -- Pay one player 1 XP and measure who actually received it.
 --
 -- Paying one player raised the other in the first two-player run, and the
@@ -183,7 +173,7 @@ function probe.test_grant(which)
     for i, character in ipairs(list) do
         local after = players.exp(character)
         local delta = (after and before[i]) and (after - before[i]) or nil
-        local away = (i == which) and 0 or distance(character, target)
+        local away = (i == which) and 0 or players.distance(character, target)
 
         -- "%+s" is not a thing: the + flag is for numbers, and string.format
         -- raises on it. Build the signed text by hand so a nil delta is still
@@ -235,6 +225,103 @@ local function name_of(object)
     local ok, n = pcall(function() return object:GetFName():ToString() end)
     if ok and n then return n end
     return nil
+end
+
+-- Property kinds whose value is a plain scalar and safe to read. Anything else
+-- is left alone: asking a struct or an array for its contents is the territory
+-- that killed the game during discovery.
+local SCALARS = {
+    FloatProperty = true,
+    DoubleProperty = true,
+    IntProperty = true,
+    Int8Property = true,
+    Int64Property = true,
+    UInt32Property = true,
+    ByteProperty = true,
+    BoolProperty = true,
+}
+
+local RANGE_HINTS = { "radius", "range", "distance", "dist", "near", "share" }
+
+local function looks_like_a_range(name)
+    local lowered = name:lower()
+    for _, hint in ipairs(RANGE_HINTS) do
+        if lowered:find(hint, 1, true) then return true end
+    end
+    return false
+end
+
+-- Is the distance Palworld shares XP over something we can just write to?
+--
+-- Worth knowing before building anything that works around it. If the radius is
+-- reachable, setting it huge makes the game share every award with everybody
+-- itself -- right amounts, right pal XP, right level-ups -- and the pool stops
+-- having to infer from totals whether two players who both gained were near
+-- each other. Most of this mod would become unnecessary.
+--
+-- The kill path gives no hope of intercepting it: run one found that kills fire
+-- AddExp_EnemyDeath and not GiveExpToAroundPlayerCharacter, so the sharing
+-- happens inside native code with no reflected radius to change. A property on
+-- a live object is the remaining possibility, and BP_PalExpDatabase_C is a
+-- Blueprint, so it may well expose one.
+function probe.dump_share_radius()
+    local CANDIDATES = {
+        "PalExpDatabase",
+        "PalGameSetting",
+        "PalGameWorldSettings",
+        "PalWorldSettings",
+        "PalGameStateInGame",
+    }
+
+    log("---- looking for a share radius we can set ----")
+
+    for _, class in ipairs(CANDIDATES) do
+        local found, object = pcall(FindFirstOf, class)
+        local live = false
+        if found and object then
+            local ok, valid = pcall(function() return object:IsValid() end)
+            live = ok and valid
+        end
+
+        if not live then
+            log(class .. ": not present")
+        else
+            local named, full = pcall(function() return object:GetFullName() end)
+            log(class .. ": " .. ((named and full) or "found, but it will not name itself"))
+
+            local seen, hits = 0, 0
+            local walked = pcall(function()
+                object:GetClass():ForEachProperty(function(property)
+                    seen = seen + 1
+                    local name = name_of(property) or "?"
+                    local kind = name_of(property:GetClass()) or "?"
+                    local interesting = looks_like_a_range(name)
+
+                    if interesting or SCALARS[kind] then
+                        local text = "not read"
+                        if SCALARS[kind] then
+                            local read, value = pcall(function() return object[name] end)
+                            if read then text = tostring(value) end
+                        end
+                        log(string.format("    %s%s: %s = %s",
+                            interesting and "*** " or "", name, kind, text))
+                        if interesting then hits = hits + 1 end
+                    end
+                end)
+            end)
+
+            if not walked then
+                log("    -- stopped reading properties after " .. seen)
+            elseif seen == 0 then
+                log("    (no properties reported)")
+            end
+            log(string.format("    %s propert(ies), %s of them look like a range",
+                tostring(seen), tostring(hits)))
+        end
+    end
+
+    log("Anything marked *** is worth trying: set it large and see whether a kill"
+        .. " reaches a player standing far away.")
 end
 
 -- What a parameter is made of, beyond its outer kind. An ArrayProperty on its
@@ -357,6 +444,8 @@ function probe.dump_exp_api()
         end
         log(string.format("  FindFirstOf(%q) -> %s", how, description))
     end
+
+    probe.dump_share_radius()
 end
 
 return probe

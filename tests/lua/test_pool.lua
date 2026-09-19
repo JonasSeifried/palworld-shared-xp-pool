@@ -666,11 +666,11 @@ test("the pool never creates more than the rise times the players", function()
     assert_equal(total() - before, 300 * 60, "60 a tick, never more")
 end)
 
-test("nobody is ever raised above the player in front", function()
-    -- A budget larger than the room for it. Slow is 100 ahead when Fast earns
-    -- 200, so 200 of budget meets 100 of headroom; the rest goes unpaid rather
-    -- than carrying Slow past Fast to 300.
-    local state = fake.reset({ "Slow", "Fast" })
+test("a player behind is brought level with the one in front, never past", function()
+    -- The one who started ahead is overtaken by the other\'s own earnings, which
+    -- the pool does not control. What it must not do is carry either of them
+    -- past the other: they finish level.
+    local state = fake.reset({ "Early", "Earner" })
     state.players[1]._exp, state.players[2]._exp = 100, 0
     local pool = load_pool()
     pool.tick()
@@ -678,8 +678,14 @@ test("nobody is ever raised above the player in front", function()
     state.players[2]._exp = state.players[2]._exp + 200
     pool.tick()
 
-    assert_equal(state.players[1]._exp, 200, "filled exactly level, not to 300")
-    assert_equal(state.players[2]._exp, 200, "and the earner is untouched")
+    assert_equal(state.players[1]._exp, 250, "levelled")
+    assert_equal(state.players[2]._exp, 250, "levelled")
+
+    -- And the whole budget was spent doing it: 200 earned by one of two players
+    -- put 400 in the world. An earlier ceiling capped this at the leader\'s total
+    -- and silently dropped the remaining 100.
+    assert_equal(state.players[1]._exp + state.players[2]._exp, 100 + 0 + 400,
+        "rise times players, with nothing dropped")
 end)
 
 test("a gap closes when the people behind are playing too", function()
@@ -751,6 +757,131 @@ test("catch_up off keeps the old allocation exactly", function()
     assert_equal(state.players[1]._exp, 20, "the earner gets only what they earned")
     assert_equal(state.players[2]._exp, 1020, "and the player in front is topped up too")
     assert_equal(spread(state), 1000, "so the gap is exactly as it was")
+end)
+
+test("players too far apart to have shared add their gains together", function()
+    -- Two kills in the same second, 20,000 units apart. Neither player can have
+    -- received the other\'s, so the tick earned 50 between them and both should
+    -- end up with it. Without a radius this collapses to the larger of the two.
+    local state = fake.reset({ "P1", "P2" })
+    state.players[1]._exp, state.players[2]._exp = 1000, 1000
+    state.players[1]._x, state.players[2]._x = 0, 20000
+    local pool = load_pool({ share_radius = 5000 })
+    pool.tick()
+
+    state.players[1]._exp = state.players[1]._exp + 20
+    state.players[2]._exp = state.players[2]._exp + 30
+    pool.tick()
+
+    assert_equal(state.players[1]._exp, 1050, "P1 got both kills")
+    assert_equal(state.players[2]._exp, 1050, "and so did P2")
+end)
+
+test("two people grinding apart at the same rate are not mistaken for one", function()
+    -- The damaging case, and the reason the radius exists at all. Equal rises
+    -- look exactly like one kill the game shared, so without a distance the pool
+    -- pays nothing and the two of them get no sharing whatsoever.
+    local state = fake.reset({ "P1", "P2" })
+    state.players[1]._exp, state.players[2]._exp = 1000, 1000
+    state.players[1]._x, state.players[2]._x = 0, 20000
+
+    local pool = load_pool({ share_radius = 5000 })
+    pool.tick()
+    state.players[1]._exp = state.players[1]._exp + 20
+    state.players[2]._exp = state.players[2]._exp + 20
+    pool.tick()
+    assert_equal(state.players[1]._exp, 1040, "each ends with both kills")
+
+    -- The same tick with no radius set: nothing happens at all.
+    local bare = fake.reset({ "P1", "P2" })
+    bare.players[1]._exp, bare.players[2]._exp = 1000, 1000
+    local plain = load_pool()
+    plain.tick()
+    bare.players[1]._exp = bare.players[1]._exp + 20
+    bare.players[2]._exp = bare.players[2]._exp + 20
+    plain.tick()
+    assert_equal(bare.players[1]._exp, 1020, "read as one shared kill, so nothing paid")
+end)
+
+test("players close enough to have shared are still counted once", function()
+    -- Standing together, Palworld gives each of them both kills, so both rise by
+    -- 50 on their own. Adding those together would hand out 100 for 50 earned.
+    local state = fake.reset({ "P1", "P2" })
+    state.players[1]._exp, state.players[2]._exp = 1000, 1000
+    state.players[1]._x, state.players[2]._x = 0, 1000
+    local pool = load_pool({ share_radius = 5000 })
+    pool.tick()
+
+    state.players[1]._exp = state.players[1]._exp + 50
+    state.players[2]._exp = state.players[2]._exp + 50
+    pool.tick()
+
+    assert_equal(#state.grants, 0, "the game had already done it")
+    assert_equal(state.players[1]._exp, 1050, "P1")
+    assert_equal(state.players[2]._exp, 1050, "P2")
+end)
+
+test("a distance that cannot be read merges rather than splits", function()
+    -- Merging can only under-share. Splitting on a bad reading would invent XP,
+    -- so an unreadable position has to fall back to the cautious answer.
+    local state = fake.reset({ "P1", "P2" })
+    state.players[1]._exp, state.players[2]._exp = 1000, 1000
+    local pool = load_pool({ share_radius = 5000 })
+    pool.tick()
+
+    state.players[2].K2_GetActorLocation = function() error("no position") end
+    state.players[1]._exp = state.players[1]._exp + 20
+    state.players[2]._exp = state.players[2]._exp + 20
+    pool.tick()
+
+    assert_equal(state.players[1]._exp, 1020, "treated as one shared kill")
+end)
+
+test("the watch log reports what the game did, and from how far apart", function()
+    local state = fake.reset({ "P1", "P2" })
+    state.players[1]._x, state.players[2]._x = 0, 20000
+    local pool = load_pool({ watch_rises = true })
+    pool.tick()
+
+    state.players[1]._exp = state.players[1]._exp + 20
+    pool.tick()
+
+    assert_equal(said(state, "P1 +20"), true, "the gain")
+    assert_equal(said(state, "P2 +0"), true, "and that the other player got none")
+    assert_equal(said(state, "P1-P2 20000"), true, "at this distance")
+end)
+
+test("watching still works while sharing is paused", function()
+    -- Which is the only way to see what the game does rather than what the pool
+    -- does, since a payout lands in the very next reading.
+    local state = fake.reset({ "P1", "P2" })
+    local pool = load_pool({ watch_rises = true })
+    pool.tick()
+    pool.set_paused(true)
+
+    state.players[1]._exp = state.players[1]._exp + 20
+    pool.tick()
+
+    assert_equal(said(state, "P1 +20"), true, "still reported")
+    assert_equal(#state.grants, 0, "and still paying nobody")
+end)
+
+test("the probe hunts for a settable share radius, safely", function()
+    -- Widening Palworld\'s own radius would make all of share_radius pointless,
+    -- so it is worth one keypress to find out. The hunt reads scalars only: a
+    -- struct is named and left alone, which is the rule that keeps F9 from
+    -- killing the game.
+    local state = fake.reset({ "P1" })
+    package.loaded["probe"] = nil
+    package.loaded["players"] = nil
+    package.loaded["config"] = nil
+
+    require("probe").dump_share_radius()
+
+    assert_equal(state.unsafe_property_access, false, "accessor use")
+    assert_equal(said(state, "*** NearbyShareRadius"), true, "flagged the likely one")
+    assert_equal(said(state, "= 1500.0"), true, "and read its value")
+    assert_equal(said(state, "CachedTable"), false, "the struct was not asked for")
 end)
 
 real_print(string.format("\n%d passed, %d failed", passed, failed))
