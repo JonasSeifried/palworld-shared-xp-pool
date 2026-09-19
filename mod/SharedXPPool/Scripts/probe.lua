@@ -181,10 +181,15 @@ function probe.test_grant()
         local delta = (after and before[i]) and (after - before[i]) or nil
         local away = (i == 1) and 0 or distance(character, target)
 
-        log(string.format("  %-16s %s -> %s  (%+s xp)  %s",
+        -- "%+s" is not a thing: the + flag is for numbers, and string.format
+        -- raises on it. Build the signed text by hand so a nil delta is still
+        -- printable.
+        local change = delta and string.format("%+d", delta) or "?"
+
+        log(string.format("  %-16s %s -> %s  (%s xp)  %s",
             players.name(character),
             tostring(before[i]), tostring(after),
-            tostring(delta),
+            change,
             i == 1 and "<- the one being paid"
                 or ("distance " .. (away and string.format("%.0f", away) or "?"))))
 
@@ -201,11 +206,52 @@ function probe.test_grant()
     end
 end
 
+local function name_of(object)
+    local ok, n = pcall(function() return object:GetFName():ToString() end)
+    if ok and n then return n end
+    return nil
+end
+
+-- What a parameter is made of, beyond its outer kind. An ArrayProperty on its
+-- own says nothing about what belongs in the array, and that is exactly what
+-- has to be right to pay one player instead of a sphere full of them.
+local function detail(property)
+    local parts = {}
+
+    local ok, inner = pcall(function() return property:GetInner() end)
+    if ok and inner then
+        local kind = name_of(inner:GetClass())
+        local class = nil
+        local okc, target = pcall(function() return inner:GetPropertyClass() end)
+        if okc and target then class = name_of(target) end
+        parts[#parts + 1] = "of " .. (kind or "?") .. (class and (" -> " .. class) or "")
+    end
+
+    local oko, target = pcall(function() return property:GetPropertyClass() end)
+    if oko and target then
+        parts[#parts + 1] = "-> " .. (name_of(target) or "?")
+    end
+
+    local oks, struct = pcall(function() return property:GetStruct() end)
+    if oks and struct then
+        parts[#parts + 1] = "{" .. (name_of(struct) or "?") .. "}"
+    end
+
+    if #parts == 0 then return "" end
+    return "  (" .. table.concat(parts, " ") .. ")"
+end
+
 -- What the exp-granting functions actually take. Reading a UFunction's
 -- parameter list cannot crash anything, unlike calling it with guessed
--- arguments -- and GiftPlayer / ExpValue appear in the binary's name table next
--- to these functions, which hints at a way to pay exactly one player with no
--- sphere involved at all.
+-- arguments.
+--
+-- The first pass already found the shape worth having:
+-- AddExpValue_forPlayerParty_Server(ExpValue: Int64, GiftPlayerList: Array,
+-- isCallDelegate: Bool) takes an explicit list of players and no radius at all,
+-- which is the leak-free payout this mod needs. What it did not say is what
+-- belongs in that list -- player characters, player states or something else --
+-- and passing the wrong type to a native function is how the game crashes. So
+-- ask, rather than guess.
 function probe.dump_exp_api()
     local FUNCTIONS = {
         "/Script/Pal.PalExpDatabase:AddExpValue_forPlayerParty_Server",
@@ -227,7 +273,7 @@ function probe.dump_exp_api()
                 fn:ForEachProperty(function(property)
                     local name = property:GetFName():ToString()
                     local kind = property:GetClass():GetFName():ToString()
-                    params[#params + 1] = name .. ": " .. kind
+                    params[#params + 1] = name .. ": " .. kind .. detail(property)
                 end)
             end)
 
@@ -241,6 +287,16 @@ function probe.dump_exp_api()
                 log(path .. "  -- could not read its parameters")
             end
         end
+    end
+
+    -- Calling AddExpValue_forPlayerParty_Server needs a live UPalExpDatabase to
+    -- call it on, not the class default. Find out now whether one is reachable,
+    -- while it costs nothing.
+    log("looking for a live PalExpDatabase to call:")
+    for _, how in ipairs({ "PalExpDatabase", "PalExpDatabaseBase" }) do
+        local ok, found = pcall(FindFirstOf, how)
+        log(string.format("  FindFirstOf(%q) -> %s", how,
+            (ok and found and found:IsValid()) and found:GetFullName() or "nothing"))
     end
 end
 

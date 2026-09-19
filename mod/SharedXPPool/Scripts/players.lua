@@ -149,8 +149,12 @@ function players.key(character)
     if state then
         local ok, text = pcall(function()
             local uid = state.PlayerUId
+            -- The four words come back as signed integers, so a high bit set
+            -- prints as FFFFFFFFD0686E06 rather than D0686E06. Mask to 32 bits
+            -- to get the form the save files use.
+            local function word(v) return (v or 0) & 0xFFFFFFFF end
             return string.format("%08X-%08X-%08X-%08X",
-                uid.A or 0, uid.B or 0, uid.C or 0, uid.D or 0)
+                word(uid.A), word(uid.B), word(uid.C), word(uid.D))
         end)
         if ok and text then return text end
     end

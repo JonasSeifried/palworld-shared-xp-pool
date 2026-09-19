@@ -305,7 +305,7 @@ test("main binds every probe key", function()
     -- main.lua silently failed to apply, the key was never registered, and an
     -- unbound key looks exactly like a working key whose handler does nothing.
     -- Loading main.lua for real is the only way to catch that.
-    local state = fake.reset({ "Jonas" })
+    local state = fake.reset({ "Jonas", "Keddo" })
     package.loaded["probe"] = nil
     package.loaded["players"] = nil
     package.loaded["config"] = nil
@@ -318,11 +318,69 @@ test("main binds every probe key", function()
     assert_equal(type(state.keybinds[8]), "function", "F8 bound")
     assert_equal(type(state.keybinds[9]), "function", "F9 bound")
 
-    -- Pressing each must not raise, including F9 against a world where none of
-    -- the exp functions can be found.
     state.keybinds[7]()
     state.keybinds[8]()
     state.keybinds[9]()
+
+    -- Every handler is wrapped so a fault cannot take the game down, which
+    -- also means a broken one looks like a working one from in game. F8 once
+    -- died on a "%+s" format halfway through, after the payout had already
+    -- happened, and this test passed anyway. So check the log, not just that
+    -- nothing raised.
+    for _, line in ipairs(state.output) do
+        if line:find("failed:") then
+            error("a key handler faulted: " .. line, 2)
+        end
+    end
+end)
+
+test("no format string uses a numeric flag on %s", function()
+    -- "%+s" raised in game and silently returned "1" here: Lua tightened
+    -- format validation after 5.4.2, and UE4SS ships a newer one than this
+    -- suite runs on. So the running test could not catch it and a static check
+    -- has to. Only "-" and a width are legal on %s and %q.
+    local files = {
+        "config", "main", "players", "pool", "probe",
+    }
+
+    for _, name in ipairs(files) do
+        local path = "mod/SharedXPPool/Scripts/" .. name .. ".lua"
+        local handle = assert(io.open(path, "r"))
+        local source = handle:read("a")
+        handle:close()
+
+        for line in source:gmatch("[^\n]+") do
+            -- Skip whole-line comments: the note explaining this rule quotes
+            -- the very thing it forbids.
+            if not line:match("^%s*%-%-") then
+                local bad = line:match("%%[+ #0][-%d%.]*[sq]")
+                if bad then
+                    error(path .. " uses " .. bad .. ", which raises on UE4SS's Lua"
+                        .. " -- in: " .. line:gsub("^%s+", ""), 2)
+                end
+            end
+        end
+    end
+end)
+
+test("player keys use the same form as the save files", function()
+    -- The UId words come back signed, and "%08X" widens a negative one to
+    -- sixteen digits: Keddo's key logged as FFFFFFFFD0686E06 where his save
+    -- file is named D0686E06.
+    local state = fake.reset({ "Keddo" })
+    load_pool()
+    local players = require("players")
+
+    state.players[1].GetPlayerState = function()
+        return {
+            IsValid = function() return true end,
+            PlayerNamePrivate = { ToString = function() return "Keddo" end },
+            PlayerUId = { A = 0xD0686E06 - 0x100000000, B = 0, C = 0, D = 0 },
+        }
+    end
+
+    assert_equal(players.key(state.players[1]),
+        "D0686E06-00000000-00000000-00000000", "key")
 end)
 
 real_print(string.format("\n%d passed, %d failed", passed, failed))
