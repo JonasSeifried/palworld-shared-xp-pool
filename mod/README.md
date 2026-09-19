@@ -505,7 +505,7 @@ worked.
 lua tests/lua/test_pool.lua
 ```
 
-Fifty tests against a stubbed UE4SS. The fake models what the game actually
+Fifty-one tests against a stubbed UE4SS. The fake models what the game actually
 does, which is the part that matters: a payout really moves the number, and in
 `propagate` mode it moves *everyone's*, the way paying one player raised the
 other in game.
@@ -530,6 +530,7 @@ The ones worth having:
 - a game setting is written, read back, and reported
 - a write that does not take is reported rather than assumed
 - widening the game's sharing and inferring it are flagged as overlapping
+- the shipped config arms nothing that changes a world on its own
 
 Each was checked by breaking the code it defends and watching it go red. The
 first one only exists because removing the re-read broke nothing in the suite --

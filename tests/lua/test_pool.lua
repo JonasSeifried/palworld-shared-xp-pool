@@ -1000,5 +1000,22 @@ test("either one on its own is not flagged", function()
     assert_equal(said(state, "counted twice"), false, "no warning for the setting alone")
 end)
 
+test("the shipped config arms nothing that changes a world on its own", function()
+    -- Every one of these has been left switched on at least once after a
+    -- testing session, and two of them shipped that way. A config is easy to
+    -- edit and easy to forget, so the defaults get their own test rather than
+    -- relying on whoever ran the tests last having tidied up.
+    fake.reset({})
+    package.loaded["config"] = nil
+    local config = require("config")
+
+    assert_equal(config.debug_keys, false, "debug_keys")
+    assert_equal(config.watch_rises, false, "watch_rises")
+    assert_equal(config.probe_only, false, "probe_only")
+    assert_equal(config.share_radius, nil, "share_radius")
+    assert_equal(config.test_grant_amount, 1, "test_grant_amount")
+    assert_equal(next(config.game_settings), nil, "game_settings writes nothing")
+end)
+
 real_print(string.format("\n%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)

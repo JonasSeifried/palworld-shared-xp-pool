@@ -96,8 +96,8 @@ config.watch_rises = false
 -- Empty by default. Every write is read back and reported, and a name this
 -- build does not have is skipped with a line saying so. F9 lists what exists.
 --
---   config.game_settings = {}
-config.game_settings = { MapObjectDistributeExpRange = 1000000.0 }
+--   config.game_settings = { MapObjectDistributeExpRange = 1000000.0 }
+config.game_settings = {}
 
 -- How much XP the F6 and F8 test payouts hand over.
 --
