@@ -338,14 +338,42 @@ Written once when a world loads, read back, and reported -- a write that quietly
 does nothing would leave the pool trusting a radius that never changed, so it is
 never assumed to have worked.
 
-That covers map objects: mining, chopping, harvesting. **Kills are not settled.**
-They fire `AddExp_EnemyDeath` and not `GiveExpToAroundPlayerCharacter`, so that
-sharing happens in native code, and no kill-related range has turned up yet --
-though the first pass of the dump truncated at 300 of the 680 properties, so
-more than half of them have not actually been looked at.
+Confirmed in game: the write takes and holds.
 
-**F9** lists every property with its class and value, marking plausible names
-with `***`. Worth pressing before relying on `share_radius` at all.
+```
+[21:43:22] MapObjectDistributeExpRange: 1000.0 -> 1000000.0
+[21:44:51] *** MapObjectDistributeExpRange: FloatProperty = 1000000.0
+```
+
+**And that is the only one.** With all 680 properties read -- an earlier pass
+truncated at 300 and made this look open -- `MapObjectDistributeExpRange` is the
+sole *distance* among them. Everything else XP-flavoured is an amount or a
+multiplier: `CraftEXP` 2, `MapObjectDestroyProceedExp` 5,
+`RarePalDefeatBonusExpRate` 20, the capture bonus tables. Kills and captures
+fire `AddExp_EnemyDeath`, not `GiveExpToAroundPlayerCharacter`, so their sharing
+is native code with nothing exposed to change.
+
+So the two approaches split the work rather than competing:
+
+| | handled by |
+|---|---|
+| mining, chopping, harvesting | the game itself, via `MapObjectDistributeExpRange` |
+| kills, captures, crafting, everything else | the pool, via `share_radius` |
+
+The first half is the better half, because the game does it with the right
+amounts and the right pal XP, and the pool then sees two equal rises and
+correctly does nothing.
+
+**Do not set both for the same kind of XP.** If the game hands a tree's 5 XP to
+two players a mile apart, their rises match and the pool leaves it alone --
+unless `share_radius` has decided they are too far apart to have shared, in
+which case it adds them and pays 10 for a 5 XP tree. The mod warns at startup
+when `share_radius` and a widened `MapObjectDistributeExpRange` are both set.
+
+**F9** lists every property with its class and value, marks plausible names with
+`***`, and finishes with just the XP-related ones on their own -- which is the
+list that actually answers this question, and is worth re-reading after a game
+patch.
 
 ## Closing a gap that already exists
 
@@ -446,6 +474,9 @@ and the party comes along. See above.
 a player who can no longer gain XP reads as earning nothing every tick, so they
 would be paid every tick to no effect.
 
+**Four players**, per `MaxPlayerNum` on a hosted world. Worth knowing for the
+catch-up arithmetic, which shares a tick's budget across everybody connected.
+
 **The tech tree is not shared.** Reasoning in the [root README](../README.md);
 in short, a shared XP pool already puts everyone on the same technology point
 income. Sharing the tree is a v2 decision.
@@ -474,7 +505,7 @@ worked.
 lua tests/lua/test_pool.lua
 ```
 
-Forty-eight tests against a stubbed UE4SS. The fake models what the game actually
+Fifty tests against a stubbed UE4SS. The fake models what the game actually
 does, which is the part that matters: a payout really moves the number, and in
 `propagate` mode it moves *everyone's*, the way paying one player raised the
 other in game.
@@ -498,6 +529,7 @@ The ones worth having:
 - a distance that cannot be read merges rather than splits
 - a game setting is written, read back, and reported
 - a write that does not take is reported rather than assumed
+- widening the game's sharing and inferring it are flagged as overlapping
 
 Each was checked by breaking the code it defends and watching it go red. The
 first one only exists because removing the re-read broke nothing in the suite --

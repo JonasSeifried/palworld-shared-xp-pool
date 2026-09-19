@@ -890,8 +890,10 @@ test("the probe hunts for a settable share radius, safely", function()
 end)
 
 test("no game setting is touched unless one is asked for", function()
+    -- Explicitly empty rather than relying on the shipped default, so a config
+    -- left armed after a testing session cannot quietly pass this.
     local state = fake.reset({ "P1", "P2" })
-    local pool = load_pool()
+    local pool = load_pool({ game_settings = {} })
     pool.tick()
 
     assert_equal(state.game_setting.MapObjectDistributeExpRange, 1000.0, "untouched")
@@ -973,6 +975,29 @@ test("settings wait for a world rather than giving up", function()
     pool.tick()
     assert_equal(state.game_setting.MapObjectDistributeExpRange, 1000000.0,
         "written once the world turned up")
+end)
+
+test("widening the game's own sharing and inferring it are flagged as overlapping", function()
+    -- Both answer the same question, and together they double-count: the game
+    -- hands a tree's 5 xp to two distant players, their rises match, and then
+    -- share_radius decides they were too far apart to have shared and adds them.
+    local state = fake.reset({ "P1", "P2" })
+    local pool = load_pool({
+        share_radius = 5000,
+        game_settings = { MapObjectDistributeExpRange = 1000000.0 },
+    })
+    pool.tick()
+
+    assert_equal(said(state, "map object XP will be counted twice"), true, "warned")
+end)
+
+test("either one on its own is not flagged", function()
+    local state = fake.reset({ "P1", "P2" })
+    local pool = load_pool({
+        game_settings = { MapObjectDistributeExpRange = 1000000.0 },
+    })
+    pool.tick()
+    assert_equal(said(state, "counted twice"), false, "no warning for the setting alone")
 end)
 
 real_print(string.format("\n%d passed, %d failed", passed, failed))

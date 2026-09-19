@@ -319,6 +319,11 @@ function probe.dump_share_radius()
 
     log("---- looking for a share radius we can set ----")
 
+    -- 680 properties on PalGameSetting alone is too many to read through for
+    -- the one question this is actually asking, so the XP-related ones are
+    -- repeated on their own at the end.
+    local exp_findings = {}
+
     for _, class in ipairs(CANDIDATES) do
         local found, object = pcall(FindFirstOf, class)
         local live = false
@@ -361,6 +366,11 @@ function probe.dump_share_radius()
                         interesting and "*** " or "", name, kind, text,
                         owner or "?"))
                     if interesting then hits = hits + 1 end
+
+                    if name:lower():find("exp", 1, true) then
+                        exp_findings[#exp_findings + 1] = string.format(
+                            "  %s: %s = %s  [%s]", name, kind, text, owner or "?")
+                    end
                 end)
 
             if not walked then
@@ -375,6 +385,13 @@ function probe.dump_share_radius()
 
     log("Anything marked *** is worth trying: set it large and see whether a kill"
         .. " reaches a player standing far away.")
+
+    -- The actual answer, without the other 600 lines around it.
+    log("---- everything with 'exp' in the name ----")
+    for _, line in ipairs(exp_findings) do log(line) end
+    log(string.format("%s exp-related propert(ies). A *distance* among them is"
+        .. " what would let the game share that kind of XP itself.",
+        tostring(#exp_findings)))
 end
 
 -- What a parameter is made of, beyond its outer kind. An ArrayProperty on its

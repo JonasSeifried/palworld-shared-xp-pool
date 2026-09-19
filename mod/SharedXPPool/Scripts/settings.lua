@@ -47,6 +47,19 @@ function settings.apply()
     local checked, valid = pcall(function() return object:IsValid() end)
     if not (checked and valid) then return false end
 
+    -- Widening the game's own sharing and inferring it from distance are two
+    -- answers to the same question, and running both double-counts. If the game
+    -- hands a tree's 5 xp to two players a mile apart, their rises are equal and
+    -- the pool correctly does nothing -- unless share_radius has decided they
+    -- are too far apart to have shared, in which case it adds them together and
+    -- pays 10 for a 5 xp tree.
+    if config.share_radius and config.share_radius > 0
+        and wanted.MapObjectDistributeExpRange then
+        print("[SharedXPPool] warning: share_radius is set AND"
+            .. " MapObjectDistributeExpRange is being widened. Those overlap --"
+            .. " map object XP will be counted twice. Pick one.\n")
+    end
+
     for name, value in pairs(wanted) do
         local before = readable(object, name)
         if before == nil then
