@@ -146,8 +146,10 @@ end
 -- the answer.
 function probe.test_grant(which)
     local players = require("players")
+    local config = require("config")
 
     which = which or 1
+    local amount = config.test_grant_amount or 1
 
     log("---- grant test (player " .. which .. ") ----")
 
@@ -164,8 +166,8 @@ function probe.test_grant(which)
 
     local target = list[which]
 
-    log("paying " .. players.name(target) .. " 1 xp")
-    local ok = players.grant(target, 1)
+    log("paying " .. players.name(target) .. " " .. tostring(amount) .. " xp")
+    local ok = players.grant(target, amount)
     log("call returned: " .. tostring(ok)
         .. "  (route: " .. tostring(players.precise_payout()) .. ")")
 
@@ -203,7 +205,6 @@ function probe.test_grant(which)
     -- ticks on its own schedule -- so the interesting part, whether a player
     -- topped up by the pool brings their pal along, has not happened. Look
     -- again once it has, measuring from the same baseline.
-    local config = require("config")
     ExecuteWithDelay(config.poll_interval_ms + 500, function()
         local ok, err = pcall(function()
             log("---- after the pool ticked ----")
@@ -241,7 +242,50 @@ local SCALARS = {
     BoolProperty = true,
 }
 
-local RANGE_HINTS = { "radius", "range", "distance", "dist", "near", "share" }
+local RANGE_HINTS = {
+    "radius", "range", "distance", "dist", "near", "share",
+    "area", "length", "sphere", "party", "around",
+}
+
+-- Every property on a class, including the ones it inherits.
+--
+-- The first version of this asked BP_PalExpDatabase_C for its properties and was
+-- told there were none, which is not believable for a Blueprint. ForEachProperty
+-- walks what a class declares itself; anything a Blueprint inherits from its
+-- native parent -- which is where a radius would live -- is on the parent. So
+-- walk up the chain, and say which class each property came from.
+local function for_each_property_in_chain(class, visit)
+    -- UE4SS offers this on some builds and not others, so try it before doing
+    -- the walk by hand.
+    local chained = pcall(function() class:ForEachPropertyInChain(visit) end)
+    if chained then return true end
+
+    local seen_any = false
+    local depth = 0
+    while class and depth < 16 do
+        local owner = name_of(class) or "?"
+        local ok = pcall(function()
+            class:ForEachProperty(function(property) visit(property, owner) end)
+        end)
+        if ok then seen_any = true end
+
+        local got, super = pcall(function() return class:GetSuperStruct() end)
+        if not got or not super then
+            got, super = pcall(function() return class.SuperStruct end)
+        end
+        local valid = false
+        if got and super then
+            local checked, is_valid = pcall(function() return super:IsValid() end)
+            valid = checked and is_valid
+        end
+        if not valid then break end
+
+        class = super
+        depth = depth + 1
+    end
+    return seen_any
+end
+
 
 local function looks_like_a_range(name)
     local lowered = name:lower()
@@ -267,9 +311,9 @@ end
 function probe.dump_share_radius()
     local CANDIDATES = {
         "PalExpDatabase",
+        "PalExpDatabaseBase",
         "PalGameSetting",
         "PalGameWorldSettings",
-        "PalWorldSettings",
         "PalGameStateInGame",
     }
 
@@ -290,30 +334,36 @@ function probe.dump_share_radius()
             log(class .. ": " .. ((named and full) or "found, but it will not name itself"))
 
             local seen, hits = 0, 0
-            local walked = pcall(function()
-                object:GetClass():ForEachProperty(function(property)
+            local class = nil
+            local got = pcall(function() class = object:GetClass() end)
+
+            local walked = got and class and for_each_property_in_chain(class,
+                function(property, owner)
                     seen = seen + 1
+                    if seen > 300 then return end
+
                     local name = name_of(property) or "?"
                     local kind = name_of(property:GetClass()) or "?"
                     local interesting = looks_like_a_range(name)
 
-                    if interesting or SCALARS[kind] then
-                        local text = "not read"
-                        if SCALARS[kind] then
-                            local read, value = pcall(function() return object[name] end)
-                            if read then text = tostring(value) end
-                        end
-                        log(string.format("    %s%s: %s = %s",
-                            interesting and "*** " or "", name, kind, text))
-                        if interesting then hits = hits + 1 end
+                    -- Every property is printed, not only the ones matching a
+                    -- guessed keyword. The whole point is to find a name nobody
+                    -- thought of.
+                    local text = "not read"
+                    if SCALARS[kind] then
+                        local read, value = pcall(function() return object[name] end)
+                        if read then text = tostring(value) end
                     end
+                    log(string.format("    %s%s: %s = %s  [%s]",
+                        interesting and "*** " or "", name, kind, text,
+                        owner or "?"))
+                    if interesting then hits = hits + 1 end
                 end)
-            end)
 
             if not walked then
-                log("    -- stopped reading properties after " .. seen)
+                log("    -- could not read properties at all")
             elseif seen == 0 then
-                log("    (no properties reported)")
+                log("    (no properties reported, even up the chain)")
             end
             log(string.format("    %s propert(ies), %s of them look like a range",
                 tostring(seen), tostring(hits)))

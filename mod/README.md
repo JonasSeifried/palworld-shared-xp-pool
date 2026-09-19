@@ -376,13 +376,42 @@ The save editor is still worth one run before the first session -- `sharedxp
 apply --mode max` converges everyone at once rather than over several evenings --
 but it is no longer the only way to close a gap.
 
+## What pals get
+
+Measured solo in game, 2026-09-19, with sharing paused so the readings are
+Palworld's own:
+
+```
+crafting a pal sphere    player +5    active pal +1
+killing a pal            player +12   active pal +2
+```
+
+So a pal gets roughly a fifth of what the player gets, and -- the useful part --
+the fraction looks the same whether the XP came from crafting or from a kill. A
+uniform ratio means the mod does not have to care where XP came from, which is
+the same reason watching totals works at all.
+
+What is confirmed, from the two-player run: a player topped up by the pool has
+their active pal gain alongside them, exactly as a player who earned it does.
+What is **not** confirmed is the fraction -- whether
+`AddExpValue_forPlayerParty_Server` hands the party the same fifth the game
+does, or something else.
+
+That is measurable alone. `config.test_grant_amount` sets how much F6 and F8 pay
+out; the default of 1 is useless here, because a fifth of 1 rounds to nothing.
+Set it to a few hundred, press F8, and compare the pal's gain against the
+player's. If it is a fifth, the mod is faithful to vanilla and there is nothing
+to do.
+
 ## Scope
 
 **Connected players only.** A player who is offline has no loaded save to reach.
 Catching them up on return is the save editor's job -- run `sharedxp apply`
 between sessions.
 
-**Pals are not touched**, same as v0.
+**Pals are not written to directly**, same as v0 -- but they are not untouched,
+because the payout goes through a function whose name ends in `forPlayerParty`
+and the party comes along. See below.
 
 **The tech tree is not shared.** Reasoning in the [root README](../README.md);
 in short, a shared XP pool already puts everyone on the same technology point

@@ -881,7 +881,10 @@ test("the probe hunts for a settable share radius, safely", function()
     assert_equal(state.unsafe_property_access, false, "accessor use")
     assert_equal(said(state, "*** NearbyShareRadius"), true, "flagged the likely one")
     assert_equal(said(state, "= 1500.0"), true, "and read its value")
-    assert_equal(said(state, "CachedTable"), false, "the struct was not asked for")
+    -- Every property is listed now, including the struct -- but its value is
+    -- never asked for, which is the rule that keeps this from killing the game.
+    assert_equal(said(state, "CachedTable: StructProperty = not read"), true,
+        "the struct was named but not opened")
 end)
 
 real_print(string.format("\n%d passed, %d failed", passed, failed))

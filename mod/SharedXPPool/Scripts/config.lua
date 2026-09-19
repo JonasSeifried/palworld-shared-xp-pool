@@ -85,6 +85,14 @@ config.share_radius = nil
 -- while measuring, or the pool's own payouts appear in the readings.
 config.watch_rises = false
 
+-- How much XP the F6 and F8 test payouts hand over.
+--
+-- 1 is right for "did the payout land, and on whom". It is useless for checking
+-- what the recipient's pal gets, because a pal takes roughly a fifth and a fifth
+-- of 1 rounds to nothing. Set this to a few hundred, press the key, and compare
+-- the pal's gain against the player's.
+config.test_grant_amount = 1
+
 -- Bind the probe keys (F6/F7/F8/F9) when the mod is live.
 --
 -- Off, and that is not tidiness. F6 and F8 inject XP into the world, and F9
