@@ -4,7 +4,14 @@
 -- decides it for everyone and joining clients need nothing installed.
 
 local config = require("config")
-local probe = require("probe")
+
+-- probe.lua is a third of the mod's code and none of it runs in a normal
+-- session, so it is loaded only if something is actually going to call it.
+local probe = nil
+local function probing()
+    probe = probe or require("probe")
+    return probe
+end
 
 print("[SharedXPPool] loading\n")
 
@@ -12,7 +19,7 @@ local pool = nil
 
 if config.probe_only then
     print("[SharedXPPool] DISCOVERY MODE -- observing only, no XP will be shared\n")
-    probe.start()
+    probing().start()
 else
     pool = require("pool")
     pool.start()
@@ -67,6 +74,7 @@ end
 --
 -- F10 is left alone; UE4SS's console enabler already uses it.
 if config.debug_keys or config.probe_only then
+    probing()
     bind(Key.F6, "F6 test_grant(player 2)", function() probe.test_grant(2) end)
     bind(Key.F7, "F7 dump_players", probe.dump_players)
     bind(Key.F8, "F8 test_grant(player 1)", function() probe.test_grant(1) end)

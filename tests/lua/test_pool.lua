@@ -423,6 +423,17 @@ test("a live session binds nothing that injects xp", function()
     assert_equal(type(state.keybinds[11]), "function", "the pause key is bound")
 end)
 
+test("a live session does not even load the debug code", function()
+    -- probe.lua is a third of the mod and none of it runs unless a key is
+    -- bound to it. Loading it anyway is a third of the parse cost for nothing.
+    fake.reset({ "P1", "P2" })
+    load_main()
+    assert_equal(package.loaded["probe"], nil, "probe was never required")
+
+    load_main({ debug_keys = true })
+    assert_equal(type(package.loaded["probe"]), "table", "and is there when asked for")
+end)
+
 test("discovery mode arms the probe keys without being asked", function()
     local state = fake.reset({ "P1" })
     load_main({ probe_only = true, debug_keys = false })
