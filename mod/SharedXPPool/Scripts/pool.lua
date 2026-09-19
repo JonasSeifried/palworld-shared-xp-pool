@@ -32,17 +32,18 @@ local watched = {}
 local running = false
 
 local function share(earner_key, amount, connected, keys)
+    local per_player = amount * config.share_rate
+    if config.divide_among_players then
+        per_player = per_player / #connected
+    end
+    per_player = math.floor(per_player)
+    if per_player <= 0 then return 0 end
+
     local recipients = 0
 
     for i, character in ipairs(connected) do
         if keys[i] ~= earner_key then
-            local per_player = amount * config.share_rate
-            if config.divide_among_players then
-                per_player = per_player / #connected
-            end
-            per_player = math.floor(per_player)
-
-            if per_player > 0 and players.grant(character, per_player) then
+            if players.grant(character, per_player) then
                 -- Remember what we gave, so the next reading does not mistake
                 -- our own payout for XP they earned and mirror it again.
                 local state = watched[keys[i]]

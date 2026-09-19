@@ -2,16 +2,16 @@ local config = {}
 
 -- Discovery mode. Observes and logs, changes nothing.
 --
--- The first probe run already answered the big question: a kill goes through
--- PalExpDatabase:AddExp_EnemyDeath, whose only argument is a PalDeadInfo, so
--- the XP amount is computed inside the game and never appears in the
--- arguments. That is why the mod now watches each player's XP total instead of
--- hooking the award. See pool.lua.
+-- Off, because the probe runs answered everything they were for. Reading works:
+-- F7 enumerated the player and read level 3 / 399 xp through
+-- GetCharacterParameterComponent():GetIndividualParameter(). Paying works: 145
+-- consecutive F8 presses each moved the total by exactly 1, with no failures,
+-- and the game levelled the player up on its own at 400 xp -- which is where
+-- data/exp_table.json says level 4 begins.
 --
--- What is still unconfirmed is whether the mod can enumerate players and read
--- their XP at all. Press F7 in game: if the dump shows the right names and the
--- right XP numbers, sharing will work, because it uses exactly that code.
-config.probe_only = true
+-- Turn it back on after a game patch, or if XP stops moving and you need to
+-- find out which half broke. F7 and F8 stay bound either way.
+config.probe_only = false
 
 -- How often to check. XP is not high-frequency, and each check is a handful of
 -- reads over the connected players, so a second is unnoticeable either way.

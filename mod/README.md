@@ -3,9 +3,10 @@
 The v1 mod: XP is shared as it is earned, instead of being reconciled after the
 fact by the save editor.
 
-**Status: discovery mode, two probe runs done.** The first settled the design
-question and changed it. The second crashed the game. Sharing is written and
-unit-tested but still switched off.
+**Status: live, untested with two players.** Both halves are proven in game --
+the mod can read every player's XP and pay XP to a chosen player -- and sharing
+is switched on. What has not happened yet is two people in one world watching XP
+actually move between them.
 
 ## What the first probe run found
 
@@ -59,25 +60,40 @@ marshalling, and a world resolved through the player controller. It ships with
 UE4SS and is maintained alongside it. Nothing on the read path touches
 `PalUtility` any more, and a test fails if it ever does again.
 
-## The next run
+## What the third run found
 
-Two keys, in order. Both log before they act, not after: a native crash cannot
-be caught by `pcall`, so the only way to locate one is for the last line in the
-log to be the thing that was about to run.
+Both halves work.
 
-**F7 -- read.** Prints each player's name, level, XP and key, and which accessor
-found the XP. Touches nothing Palworld-specific.
+**Reading.** F7 enumerated the player and read level 3 / 399 XP, through the
+*second* of the four accessors -- `GetCharacterParameterComponent()` then
+`GetIndividualParameter()`. The first guess was wrong, which is why the chain
+exists.
 
-**F8 -- pay.** Grants 1 XP to the first player and reads it back.
-`GiveExpToAroundPlayerCharacter` is the one Pal-specific call the mod still
-makes and the only one not yet proven safe here, so it is on its own key.
-Nothing should ever trigger it as a side effect of looking.
+**Paying.** 145 consecutive F8 presses each moved the total by exactly 1, with
+no failures and no drift. The game levelled the player to 4 on its own when the
+total passed 400, which is exactly where `data/exp_table.json` says level 4
+begins -- so paying through `GiveExpToAroundPlayerCharacter` does the whole job,
+level-up included, and the curve table picked up a third independent
+confirmation for free.
 
-**One player is enough for both.** Only watching XP move between two people
-needs a second player, and that comes last.
+Those 145 calls also came straight back through the `GiveExpToAroundPlayerCharacter`
+hook the probe had registered. Under the old hook-based design that would have
+been a feedback loop to defend against. Watching totals instead means it is
+simply not a question.
 
-If F7 shows XP matching what the game shows you and F8 moves it by 1, set
-`probe_only = false` in `Scripts/config.lua` and play.
+## Testing it with two people
+
+The keys stay bound when the mod is live, and F8 doubles as the two-player test.
+
+With both players connected, press **F8**. It grants 1 XP to the first player,
+which the pool then sees as earned and mirrors, so the other player should gain
+1 XP within a second. `UE4SS.log` will say so:
+
+```
+[SharedXPPool] Tondoa earned 1 xp -> shared to 1 player(s)
+```
+
+That beats grinding kills to find out whether sharing works.
 
 ## Install
 
