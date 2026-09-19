@@ -72,7 +72,11 @@ def main(argv=None) -> int:
     ap.add_argument("world", help="world save dir (the one containing Level.sav)")
     ap.add_argument("--table", default=str(DEFAULT_TABLE), help="exp table json")
     ap.add_argument("--mode", default="mean", choices=[m.value for m in Mode])
-    ap.add_argument("--no-tech", action="store_true", help="pool XP only, leave tech alone")
+    ap.add_argument(
+        "--tech",
+        action="store_true",
+        help="also share the technology tree (experimental; see README)",
+    )
     ap.add_argument("--yes", action="store_true", help="skip the apply confirmation")
     args = ap.parse_args(argv)
 
@@ -89,7 +93,7 @@ def main(argv=None) -> int:
 
     tplan = None
     psaves: dict[str, PlayerSave] = {}
-    if not args.no_tech:
+    if args.tech:
         psaves = PlayerSave.load_all(world)
         techs, missing = [], []
         for p in players:
@@ -110,7 +114,11 @@ def main(argv=None) -> int:
 
     n_xp = len(plan.touched)
     n_tech = len(tplan.touched) if tplan else 0
-    print(f"\nwould change: {n_xp} player(s) xp, {n_tech} player(s) tech")
+    if args.tech:
+        print(f"\nwould change: {n_xp} player(s) xp, {n_tech} player(s) tech")
+    else:
+        print(f"\nwould change: {n_xp} player(s) xp")
+        print("(tech tree not shared - each player keeps their own; --tech to enable)")
 
     if args.command == "report":
         print("(report only - nothing was written)")
@@ -158,7 +166,7 @@ def _verify(world, plan, tplan, args) -> int:
                 f"found lv {got.level}/{got.exp:,}"
             )
 
-    if tplan and not args.no_tech:
+    if tplan and args.tech:
         fresh_p = PlayerSave.load_all(world)
         for c in tplan.touched:
             ps = fresh_p.get(c.player.uid)

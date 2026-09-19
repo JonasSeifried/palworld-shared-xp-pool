@@ -1,18 +1,14 @@
 # Palworld Shared XP Pool
 
-One XP pool and one technology tree for everyone on a server. Everybody
-contributes, everybody benefits.
+One XP pool for everyone on a server. Everybody contributes, everybody benefits.
 
 **Status: v0 (offline save editor).** Works end-to-end on a real save. The live
 UE4SS mod is not started yet.
 
 ## What v0 does
 
-Reads every player out of a world save, then:
-
-- averages their XP into a single pool and pulls anyone below it up to that total
-- unions their unlocked technologies, so anything one player researched,
-  everyone has
+Reads every player out of a world save, averages their XP into a single pool,
+and pulls anyone below the pool up to that total.
 
 ```
 .venv/Scripts/python -m sharedxp.cli report <world-dir>
@@ -21,7 +17,7 @@ Reads every player out of a world save, then:
 
 `report` never writes. `apply` backs up every file it touches, then re-reads
 from disk afterwards and fails loudly if the values did not land.
-`--no-tech` pools XP only. `--mode` chooses `mean` (default), `max` or `sum`.
+`--mode` chooses `mean` (default), `max` or `sum`.
 
 `<world-dir>` is the folder containing `Level.sav`:
 
@@ -37,12 +33,38 @@ anything changed underneath it.
 The pool is the mean of everyone's XP.
 
 **Never lower anything.** A player ahead of the pool keeps their XP and level;
-the pool must grow past them before they move. Unlocks are unioned, never
-removed. Technology points rise to the highest balance anyone holds.
+the pool must grow past them before they move. So averaging only ever pulls
+people up -- it never takes progress away.
 
-These interact in a way worth being explicit about: on a group with a wide XP
-spread, most players will not move at all -- only those below the average do.
-The tech tree is the opposite, and tends to change everyone at once.
+On a group with a wide XP spread, most players will not move at all. Only those
+below the average do.
+
+## Technology is deliberately not shared
+
+Each player keeps their own technology tree. This is a balance decision, not an
+oversight.
+
+With a shared XP pool everyone is already the same level, so everyone earns the
+same technology points and builds their own tree at exactly one player's rate.
+That is vanilla balance per player, by construction.
+
+Sharing the tree is a real feature, but it is a *buff* unless the group also
+shares a single point balance -- three players each spending their own points on
+one tree unlocks roughly three times as fast as a solo player. Making it neutral
+offline would need each technology's point cost, which is not published and
+would mean extracting the game's own DataTable. In the live mod it is nearly
+free: the game charges the points, and the mod just mirrors one balance and one
+unlock set to everyone. So it belongs there, not here.
+
+The implementation exists and is tested. `--tech` opts in:
+
+```
+.venv/Scripts/python -m sharedxp.cli report <world-dir> --tech
+```
+
+It unions everyone's unlocks and raises every balance to the group maximum.
+Treat it as experimental, and know that it hands the group more purchasing
+power than a solo player has.
 
 ## Where the data lives
 
@@ -55,6 +77,9 @@ The tech tree is the opposite, and tends to change everyone at once.
 the tool distinguishes "absent" from "zero" and inserts the field in the same
 position the game uses.
 
+Note that `UnlockedRecipeTechnologyNames` mixes level-granted recipes with
+purchased tech-tree nodes, so its length is not a count of points spent.
+
 ## Curve drift
 
 `data/exp_table.json` is datamined from the current build. Old saves were made
@@ -66,12 +91,11 @@ pairs from a save.
 
 ## Known gaps
 
-- **Technology costs are not modelled.** Players receive the unioned unlocks for
-  free and their point balance rises to the group maximum. Nobody is charged for
-  unlocks they did not choose, but it does mean a player lifted several levels
-  gets the group's balance rather than per-level point awards.
 - **Pals are not touched.** Only player characters are pooled.
 - **Offline-only.** This is a save editor, not a live mod.
+- **Not yet loaded in Palworld.** Every check so far is at the data layer:
+  files round-trip, structures intact, property order matches vanilla. Whether
+  the game accepts an edited save is still unverified.
 
 ## Testing
 
