@@ -186,6 +186,32 @@ group then gains roughly what one player earned rather than matching the best
 earner, which is slower than vanilla rather than equal to it. It is the honest
 reading of "as if it was one player", but it is off by default.
 
+## Not yet: closing a gap that already exists
+
+The top-up equalises how fast people gain, not how much they have. Everyone
+moves in lockstep from wherever they started, so a player who was four levels
+behind on the day the mod went in stays four levels behind.
+
+Until that changes, the fix is the save editor. `sharedxp apply` converges
+everyone to the mean once, between sessions, and after that the live mod keeps
+them level. Run it before the first session on an existing world.
+
+When it is worth doing live -- mainly for someone joining an established world
+with a fresh character -- the shape is already clear, and it costs nothing in
+balance:
+
+Each tick the mod injects a known amount of XP: the sum of `best - rise` across
+everyone behind. Keep that budget exactly as it is, but distribute it by who is
+furthest behind *in total XP* rather than giving each player precisely their own
+shortfall. The player who is ahead on totals receives less than their rate
+shortfall, the one furthest behind receives more, and the sum injected is
+unchanged. Gaps close on their own, nobody is ever lowered, and the group gains
+not one point more than it does today.
+
+Deliberately not built yet. The loop fix above is confirmed in tests but not in
+game, and adding a second way to inject XP before the first one is proven means
+the next surprise has two possible causes instead of one.
+
 ## Scope
 
 **Connected players only.** A player who is offline has no loaded save to reach.
