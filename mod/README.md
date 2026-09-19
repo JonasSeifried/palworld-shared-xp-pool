@@ -3,9 +3,10 @@
 The v1 mod: XP is shared as it is earned, instead of being reconciled after the
 fact by the save editor.
 
-**Status: live, and it has shared real XP between two players.** It also looped
-the first time, paying out once a second forever with nobody playing. The cause
-and the fix are below. The fix is not yet confirmed in game.
+**Status: live, and it has shared real XP between two players.** Two faults
+found since, both understood and both fixed: it looped, paying out once a second
+forever with nobody playing; and its payouts leaked onto bystanders. Neither fix
+is confirmed in game yet.
 
 ## What the first probe run found
 
@@ -37,11 +38,12 @@ player earned, whatever they did to earn it and whichever function awarded it.
 That makes the mod source-agnostic. Kills, crafting, building, capture bonuses
 and anything added in a future patch all look the same.
 
-Payouts go through the game's own `GiveExpToAroundPlayerCharacter` at the
-recipient's feet, so level-ups, UI and replication happen normally.
+Payouts go through the game's own exp functions rather than writing the `Exp`
+field, so level-ups, UI and replication happen normally. Which function took two
+tries; see "the payout names its recipient" below.
 
-Keeping the mod from reacting to its own payouts is the hard part, and the
-first attempt at it was wrong. See the two-player run below.
+Keeping the mod from reacting to its own payouts is the hard part, and the first
+attempt at that was wrong too. See the two-player run.
 
 ## What the second probe run found
 
