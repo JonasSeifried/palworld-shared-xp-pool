@@ -38,17 +38,24 @@ config.divide_among_players = false
 --
 -- Without this the pool equalises how fast people gain, not how much they have:
 -- a player four levels behind on the day the mod goes in stays four levels
--- behind forever, because everyone is topped up to the same rise every tick.
+-- behind forever, because everyone is topped up by the same amount every tick.
 --
--- With it, the same budget -- the best earner's rise, times the number of
--- players -- goes to the lowest totals first instead of to each player's own
--- shortfall. Somebody far behind is simply the deepest valley and the water
--- reaches them first, so there is no ratio to pick and nobody is ever lowered.
+-- With it, that same amount goes to the lowest totals first instead of to each
+-- player's own shortfall. Somebody far behind is simply the deepest valley and
+-- the water reaches them first, so there is no ratio to pick.
 --
--- Nobody is raised above the player in front either, and that cap is what makes
--- it safe to leave on: once everyone is level there is nowhere to put the money
--- and it is simply not paid, so a group already sharing evenly gains exactly
--- what it does today. The extra XP exists only while there is a gap to close.
+-- It does not create a single point more XP. The budget is unchanged either
+-- way: summed over everybody, (best rise - your rise) is exactly the best rise
+-- times the number of players, less what the game already handed out. So a tick
+-- puts the same total in the world as vanilla does for a group standing
+-- together, and this only decides who holds it.
+--
+-- Nobody is lowered and nobody is raised above the player in front, so a group
+-- already level behaves exactly as it does with this off.
+--
+-- The limit worth knowing: a gap does not close while only the player in front
+-- is earning, because every point they gain is a point they created. It closes
+-- as soon as the people behind are playing at all.
 config.catch_up = true
 
 -- Bind the probe keys (F6/F7/F8/F9) when the mod is live.

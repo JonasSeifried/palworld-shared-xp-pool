@@ -231,10 +231,10 @@ test("someone joining later gets a baseline, not a windfall", function()
     pool.tick()
 
     -- Keddo is 9,800 ahead, so catching up pays him nothing and hands the whole
-    -- budget to Jonas. What matters here is the size of it: 100, being the 50
-    -- Jonas earned plus the 50 mirrored, and nothing resembling Keddo's 9,999.
+    -- budget to Jonas. What matters here is its size: 50, Keddo's shortfall
+    -- against the rise, and nothing resembling Keddo's 9,999.
     assert_equal(keddo._exp, 9999, "the player in front is not paid")
-    assert_equal(state.players[1]._exp, 250, "and the budget came from the 50 earned")
+    assert_equal(state.players[1]._exp, 200, "and the budget came from the 50 earned")
 end)
 
 test("share_rate = 0 turns sharing off", function()
@@ -555,10 +555,9 @@ test("the pause key stops payouts, and resuming pays no backlog", function()
     state.players[1]._exp = state.players[1]._exp + 50
     pool.tick()
 
-    -- 100 is the 50 earned since resuming, plus the 50 mirrored to the player
-    -- behind. Had the backlog counted, the rise would have read 150 and Keddo
-    -- would be sitting at 200.
-    assert_equal(state.players[2]._exp, 100, "sharing picks up from where it resumed")
+    -- 50 is what Jonas earned since resuming. Had the backlog counted, the rise
+    -- would have read 150 and Keddo would be sitting at 150.
+    assert_equal(state.players[2]._exp, 50, "sharing picks up from where it resumed")
 end)
 
 test("a reading after a gap is a baseline, not a windfall", function()
@@ -586,9 +585,7 @@ test("a reading after a gap is a baseline, not a windfall", function()
     -- And it is a baseline, not a blacklist: the next real earning shares.
     state.players[2]._exp = state.players[2]._exp + 10
     pool.tick()
-    -- 30 of budget (10 earned, doubled for the two behind, plus 10 mirrored)
-    -- split between Jonas and HenBot, who are level with each other.
-    assert_equal(state.players[1]._exp, 15, "Jonas shares normally again")
+    assert_equal(state.players[1]._exp, 10, "Jonas shares normally again")
 end)
 
 test("an impossible rise is ignored rather than shared", function()
@@ -609,9 +606,7 @@ test("an impossible rise is ignored rather than shared", function()
 
     state.players[1]._exp = state.players[1]._exp + 100
     pool.tick()
-    -- 200: the 100 earned plus the 100 mirrored, all of it to Keddo, who is a
-    -- long way behind after that reading.
-    assert_equal(state.players[2]._exp, 200, "the baseline moved on, so sharing resumes")
+    assert_equal(state.players[2]._exp, 100, "the baseline moved on, so sharing resumes")
 end)
 
 local function spread(state)
@@ -624,9 +619,10 @@ local function spread(state)
 end
 
 test("catching up sends the budget to whoever is furthest behind", function()
-    -- Three players a long way apart, and only the one in front is playing.
-    -- Under the old rule everybody rises by 20 and the gaps are preserved
-    -- exactly, which is the whole reason this exists.
+    -- Three players a long way apart. Whoever earns, the same 40 is created on
+    -- top of it -- 20 of shortfall each for the two who did not earn -- and the
+    -- old rule would hand them 20 apiece, preserving both gaps exactly. Instead
+    -- all of it goes to the deepest valley.
     local state = fake.reset({ "P1", "P2", "P3" })
     state.players[1]._exp, state.players[2]._exp, state.players[3]._exp = 1000, 5000, 12000
     local pool = load_pool()
@@ -635,78 +631,112 @@ test("catching up sends the budget to whoever is furthest behind", function()
     state.players[3]._exp = state.players[3]._exp + 20
     pool.tick()
 
-    -- 60 of budget: 20 each for the two behind, plus the 20 the earner gained
-    -- mirrored rather than kept. All of it to P1, who is 4,000 below P2 -- the
-    -- deepest valley fills first, which is the level weighting.
-    assert_equal(state.players[1]._exp, 1060, "P1")
+    assert_equal(state.players[1]._exp, 1040, "P1 takes the whole budget")
     assert_equal(state.players[2]._exp, 5000, "P2 waits until P1 reaches him")
     assert_equal(state.players[3]._exp, 12020, "the earner keeps only what he earned")
+
+    local created = 0
+    for _, p in ipairs(state.players) do created = created + p._exp end
+    assert_equal(created, 1000 + 5000 + 12000 + 60,
+        "20 earned by one of three players put 60 in the world, which is vanilla")
 end)
 
-test("nobody is ever raised above the player in front", function()
-    local state = fake.reset({ "Behind", "Ahead" })
-    state.players[1]._exp, state.players[2]._exp = 0, 10
-    local pool = load_pool()
-    pool.tick()
-
-    -- A budget far larger than the gap: 2,000 against 1,010 of room.
-    state.players[2]._exp = state.players[2]._exp + 1000
-    pool.tick()
-
-    assert_equal(state.players[1]._exp, 1010, "filled exactly level, not past")
-    assert_equal(state.players[2]._exp, 1010, "and the earner is untouched")
-end)
-
-test("a gap closes and then the pool goes back to keeping pace", function()
-    -- The property that makes it safe to leave on: the extra XP exists only
-    -- while there is somewhere to put it. Once everybody is level the ceiling
-    -- leaves no room, the mirrored share is simply not paid, and the group
-    -- gains exactly what it would have without any of this.
+test("the pool never creates more than the rise times the players", function()
+    -- The invariant, over a long mixed run rather than a single tick. Somebody
+    -- different earns 20 each tick, and the world gains exactly 60 every time
+    -- however lopsided the totals are.
     local state = fake.reset({ "P1", "P2", "P3" })
     state.players[1]._exp, state.players[2]._exp, state.players[3]._exp = 1000, 5000, 12000
     local pool = load_pool()
     pool.tick()
 
-    -- ~70 ticks for P1 to reach P2, then the two of them gain 30 a tick against
-    -- the earner's 20, so the remaining 8,000 closes at 10 a tick.
-    for _ = 1, 1500 do
+    local function total()
+        local sum = 0
+        for _, p in ipairs(state.players) do sum = sum + p._exp end
+        return sum
+    end
+
+    local before = total()
+    for i = 1, 300 do
+        local who = (i % 3) + 1
+        state.players[who]._exp = state.players[who]._exp + 20
+        pool.tick()
+    end
+
+    assert_equal(total() - before, 300 * 60, "60 a tick, never more")
+end)
+
+test("nobody is ever raised above the player in front", function()
+    -- A budget larger than the room for it. Slow is 100 ahead when Fast earns
+    -- 200, so 200 of budget meets 100 of headroom; the rest goes unpaid rather
+    -- than carrying Slow past Fast to 300.
+    local state = fake.reset({ "Slow", "Fast" })
+    state.players[1]._exp, state.players[2]._exp = 100, 0
+    local pool = load_pool()
+    pool.tick()
+
+    state.players[2]._exp = state.players[2]._exp + 200
+    pool.tick()
+
+    assert_equal(state.players[1]._exp, 200, "filled exactly level, not to 300")
+    assert_equal(state.players[2]._exp, 200, "and the earner is untouched")
+end)
+
+test("a gap closes when the people behind are playing too", function()
+    local state = fake.reset({ "P1", "P2", "P3" })
+    state.players[1]._exp, state.players[2]._exp, state.players[3]._exp = 1000, 5000, 12000
+    local pool = load_pool()
+    pool.tick()
+
+    for i = 1, 3000 do
+        local who = (i % 3) + 1
+        state.players[who]._exp = state.players[who]._exp + 20
+        pool.tick()
+    end
+
+    assert_equal(spread(state), 0, "everyone converged")
+
+    for i = 1, 30 do
+        local who = (i % 3) + 1
+        state.players[who]._exp = state.players[who]._exp + 20
+        pool.tick()
+    end
+    assert_equal(spread(state), 0, "and stays converged")
+end)
+
+test("only the player in front earning keeps the gap as it was", function()
+    -- The honest limit of a fixed budget, stated deliberately rather than
+    -- discovered later. Every point the leader gains is a point they created,
+    -- so nobody can gain faster than them. P1 still catches P2, and the pair
+    -- then track P3 at his own rate forever.
+    local state = fake.reset({ "P1", "P2", "P3" })
+    state.players[1]._exp, state.players[2]._exp, state.players[3]._exp = 1000, 5000, 12000
+    local pool = load_pool()
+    pool.tick()
+
+    for _ = 1, 2000 do
         state.players[3]._exp = state.players[3]._exp + 20
         pool.tick()
     end
 
-    assert_equal(spread(state), 0,
-        "everyone converged")
-
-    -- From here it must behave exactly like the old rule: one earner gains 20,
-    -- everybody ends the tick up by 20, and not a point more.
-    local before = {}
-    for i, p in ipairs(state.players) do before[i] = p._exp end
-
-    for _ = 1, 10 do
-        state.players[3]._exp = state.players[3]._exp + 20
-        pool.tick()
-    end
-
-    for i, p in ipairs(state.players) do
-        assert_equal(p._exp - before[i], 200, "player " .. i .. " gained 20 a tick")
-    end
+    assert_equal(state.players[1]._exp, state.players[2]._exp, "P1 caught P2")
+    assert_equal(state.players[3]._exp > state.players[1]._exp, true,
+        "but neither of them closed on P3")
 end)
 
 test("two players close a gap as well", function()
-    -- The version in the README could not do this. A fixed budget split between
-    -- two people gives them the same rise whatever the split, so the only way
-    -- the one behind gains faster is the mirrored share.
+    -- Which the design recorded in the README could not do at any player count.
     local state = fake.reset({ "Behind", "Ahead" })
     state.players[1]._exp, state.players[2]._exp = 0, 1000
     local pool = load_pool()
     pool.tick()
 
-    state.players[2]._exp = state.players[2]._exp + 20
+    state.players[1]._exp = state.players[1]._exp + 20
     pool.tick()
 
-    assert_equal(state.players[1]._exp, 40, "gained double the earner")
-    assert_equal(state.players[2]._exp, 1020, "who kept only his own")
-    assert_equal(spread(state), 980, "so the gap closed by 20")
+    assert_equal(state.players[1]._exp, 40, "the earner behind keeps the budget as well")
+    assert_equal(state.players[2]._exp, 1000, "and the one in front gains nothing")
+    assert_equal(spread(state), 960, "so the gap closed by 40")
 end)
 
 test("catch_up off keeps the old allocation exactly", function()
@@ -715,11 +745,12 @@ test("catch_up off keeps the old allocation exactly", function()
     local pool = load_pool({ catch_up = false })
     pool.tick()
 
-    state.players[2]._exp = state.players[2]._exp + 20
+    state.players[1]._exp = state.players[1]._exp + 20
     pool.tick()
 
-    assert_equal(state.players[1]._exp, 20, "topped up to the earner, no more")
-    assert_equal(spread(state), 1000, "and the gap is exactly as it was")
+    assert_equal(state.players[1]._exp, 20, "the earner gets only what they earned")
+    assert_equal(state.players[2]._exp, 1020, "and the player in front is topped up too")
+    assert_equal(spread(state), 1000, "so the gap is exactly as it was")
 end)
 
 real_print(string.format("\n%d passed, %d failed", passed, failed))

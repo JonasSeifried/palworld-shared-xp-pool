@@ -225,11 +225,10 @@ local function tick()
     end
     target = math.floor(target)
 
-    -- What to pay whom. Both routes hand out the same budget -- the group's
-    -- income is the best earner's rate times the number of players either way.
-    -- They differ only in where it goes: to each player's own rate shortfall,
-    -- which keeps an existing gap exactly as it was, or to the lowest totals
-    -- first, which closes it.
+    -- What to pay whom. Both routes hand out the same budget, and differ only
+    -- in where it goes: to each player's own rate shortfall, which keeps an
+    -- existing gap exactly as it was, or to the lowest totals first, which
+    -- closes it.
     local owings = {}
 
     if config.catch_up then
@@ -244,22 +243,12 @@ local function tick()
             if rise and rise < target then budget = budget + (target - rise) end
         end
 
-        -- The earner's own gain is mirrored too, not just matched. Without that
-        -- term a group where only the player in front is playing can never
-        -- close: everybody rises by the same amount and the gap is preserved
-        -- exactly. With it the budget is the full rise times the number of
-        -- players, which is what lets the people behind gain faster than the
-        -- one in front.
-        --
-        -- It costs nothing when there is no gap, because the ceiling leaves
-        -- nowhere to put it and water_fill simply does not pay it out.
-        --
-        -- Not in divide mode: there the whole idea is that the group gains what
-        -- one player earned, and mirroring a share would double it.
-        if not config.divide_among_players then
-            budget = budget + target
-        end
-
+        -- Note what this budget is: summed over everybody, target - rise is
+        -- exactly (players * target) - (what the game already gave out). So the
+        -- XP in the world after this tick is the best rise times the number of
+        -- players, no matter who ends up holding it -- the same total vanilla
+        -- would produce with everyone standing together. Catching up moves it
+        -- around; it never makes more of it.
         if #entries > 0 and budget > 0 then
             owings = water_fill(entries, budget, ceiling)
         end

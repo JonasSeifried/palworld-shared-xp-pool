@@ -218,14 +218,14 @@ anywhere else. Logs go to `<game>\Pal\Binaries\Win64\ue4ss\UE4SS.log`.
 
 ## Balance
 
-Every tick, whoever gained the most sets the mark, and that rise times the
-number of players is the budget. Nobody is ever pulled down, and nobody is ever
+Every tick, whoever gained the most sets the mark, and the world ends the tick
+holding that rise times the number of players -- exactly what vanilla produces
+for a group standing together. Nobody is ever pulled down, and nobody is ever
 raised above the player in front.
 
-Where the budget goes depends on whether anyone is behind. When everybody is
-level it can only bring each player up to the best earner, so the group gains
-exactly what it gains today. When somebody is behind, it goes to them first --
-see below.
+All the pool decides is who holds it. When everyone is level that means bringing
+each player up to the best earner. When somebody is behind, it goes to them
+first -- see below.
 
 That is not a multiplier. Palworld already gives full XP to every player
 standing nearby, so a group playing together shares nothing today -- and the
@@ -281,45 +281,43 @@ much they have. On its own it moves everybody in lockstep from wherever they
 started, so a player four levels behind on the day the mod goes in stays four
 levels behind. `config.catch_up` fixes that, and it is on.
 
-Two changes, and the second is what makes the first work.
+**It costs nothing.** The budget is not touched -- summed over everybody,
+`best rise - your rise` is exactly the best rise times the number of players,
+less what the game already handed out. A tick therefore puts the same XP in the
+world with catching up on as with it off, and as vanilla puts there for a group
+standing together. The only change is where it lands.
 
-**The budget goes to the lowest totals first.** Not each player's own shortfall
--- the water fills the deepest valley until it reaches the next one, then both
-rise together. Somebody four levels down is simply the deepest valley, so they
-are served first and there is no ratio to tune. It is also why a player who is
-only slightly behind is not overpaid.
+**It lands on the lowest totals first.** Not on each player's own shortfall --
+the water fills the deepest valley until it reaches the next one, then both rise
+together. Somebody four levels down is the deepest valley, so they are served
+first and there is no ratio to tune.
 
-**The earner's own gain is mirrored, not just matched.** Without this a group
-where only the player in front is playing can never close: everyone rises by the
-same 20 and the gap is preserved exactly. With it the budget is the rise times
-the number of players, so the people behind gain faster than the one in front.
-The earner keeps what the game gave them -- nothing is taken from anybody -- and
-receives nothing from the pool while they are the one ahead.
-
-**Nobody is raised above the player in front**, and that cap is what makes the
-whole thing safe to leave on. Once everyone is level there is nowhere left to put
-the mirrored share, so it is simply not paid:
+Three players at 1,000, 5,000 and 12,000 XP, and 20 earned:
 
 ```
-gap present   P3 earns 20 -> P1 +60, P2 +0, P3 +0    (group gains 80)
-converged     P3 earns 20 -> P1 +20, P2 +20, P3 +0   (group gains 60, as before)
+catch_up off   P1 +20, P2 +20, P3 +20    60 created, both gaps preserved exactly
+catch_up on    P1 +40, P2 +0,  P3 +20    60 created, P1 closes on both
 ```
 
-The extra XP exists only while there is a gap to close. A group already playing
-together gains exactly what it does with `catch_up` off. In tests a spread of
-11,000 XP across three players closes to zero and then holds, with every player
-gaining exactly the earner's rate from that point on.
+Whoever of the three earns the 20, the other 40 goes to P1, because P1 is
+furthest behind. Once P1 is level with P2 the two of them share it, and so on.
 
-`config.divide_among_players` skips the mirrored share, because there the point
-is that the group gains what one player earned and mirroring would double it.
-The lowest-first allocation still applies.
+**Nobody is raised above the player in front.** When the budget is larger than
+the room available the remainder is simply not paid, rather than carrying
+somebody past the person they were chasing.
 
-Two players is no longer the dead case it was in the first design: a fixed budget
-split between two people gives them the same rise however it is split, so only
-the mirrored share can close it.
+**The limit, stated deliberately:** a gap does not close while only the player
+in front is earning. Every point they gain is a point they created, so nobody
+can gain faster than them on a fixed budget -- the players behind keep pace and
+no more. As soon as the people behind are playing at all, it closes. In tests a
+spread of 11,000 XP across three players taking turns earning closes to exactly
+zero and then holds.
+
+`config.divide_among_players` is unaffected; the budget is its own either way and
+only the allocation changes.
 
 The save editor is still worth one run before the first session -- `sharedxp
-apply --mode max` converges everyone immediately rather than over an evening --
+apply --mode max` converges everyone at once rather than over several evenings --
 but it is no longer the only way to close a gap.
 
 ## Scope
@@ -357,7 +355,7 @@ worked.
 lua tests/lua/test_pool.lua
 ```
 
-Thirty-three tests against a stubbed UE4SS. The fake models what the game actually
+Thirty-five tests against a stubbed UE4SS. The fake models what the game actually
 does, which is the part that matters: a payout really moves the number, and in
 `propagate` mode it moves *everyone's*, the way paying one player raised the
 other in game.
@@ -373,8 +371,9 @@ The ones worth having:
 - pausing stops payouts, and resuming pays no backlog
 - a live session binds nothing that injects XP
 - the budget goes to whoever is furthest behind
+- the pool never creates more than the rise times the players
 - nobody is ever raised above the player in front
-- a gap closes, and then the pool goes back to keeping pace
+- a gap closes when the people behind are playing too
 
 Each was checked by breaking the code it defends and watching it go red. The
 first one only exists because removing the re-read broke nothing in the suite --
