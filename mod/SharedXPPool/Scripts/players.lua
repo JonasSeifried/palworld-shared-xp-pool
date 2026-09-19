@@ -1,42 +1,48 @@
 -- Finding the connected players, reading their XP, and paying one of them.
 --
--- Enumeration goes through PalUtility rather than FindAllOf("PalPlayerState"),
--- which returns nothing at all on some builds. It fails silently, so every loop
--- over it matches nobody and the mod looks simply broken.
+-- Enumeration deliberately uses nothing Palworld-specific. The first attempt
+-- went through PalUtility -- StaticFindObject on the CDO, then
+-- GetPlayerListDisplayMessages(FindFirstOf("World")) -- and hard-crashed the
+-- game the moment it ran. Two likely reasons, both avoided here:
+-- FindFirstOf("World") can return a UWorld that is not the one being played,
+-- and passing that into a Pal function is undefined; and the call returns an
+-- array of FText, which this build of UE4SS has a changelog entry about
+-- crashing on.
+--
+-- UEHelpers walks GameState.PlayerArray to PlayerState.PawnPrivate instead,
+-- which is plain Unreal with no text marshalling and a world resolved through
+-- the player controller. It ships with UE4SS and is maintained alongside it.
 
 local players = {}
 
-local PalUtility = nil
+local UEHelpers = nil
+do
+    local ok, helpers = pcall(require, "UEHelpers")
+    if ok then
+        UEHelpers = helpers
+    else
+        print("[SharedXPPool] could not load UEHelpers: " .. tostring(helpers) .. "\n")
+    end
+end
 
-local function utility()
-    if PalUtility and PalUtility:IsValid() then return PalUtility end
-    PalUtility = StaticFindObject("/Script/Pal.Default__PalUtility")
-    if PalUtility and PalUtility:IsValid() then return PalUtility end
+function players.world()
+    if not UEHelpers then return nil end
+    local ok, w = pcall(UEHelpers.GetWorld)
+    if ok and w and w:IsValid() then return w end
     return nil
 end
 
-local function world()
-    local w = FindFirstOf("World")
-    if w and w:IsValid() then return w end
-    return nil
-end
-
-players.utility = utility
-players.world = world
-
--- Every player currently connected, as PalPlayerCharacter actors.
+-- Every player currently connected, as pawns.
 function players.connected()
+    if not UEHelpers then return {} end
+
+    local ok, pawns = pcall(UEHelpers.GetAllPlayers)
+    if not (ok and pawns) then return {} end
+
     local out = {}
-    local w, u = world(), utility()
-    if not (w and u) then return out end
-
-    local list = u:GetPlayerListDisplayMessages(w)
-    if not list then return out end
-
-    for i = 1, #list do
-        local pc = u:GetPlayerCharacterByPlayerIndex(w, i - 1)
-        if pc and pc:IsValid() then
-            out[#out + 1] = pc
+    for _, pawn in ipairs(pawns) do
+        if pawn and pawn:IsValid() then
+            out[#out + 1] = pawn
         end
     end
     return out
@@ -44,10 +50,10 @@ end
 
 -- Reaching a character's individual parameter, which is where XP lives.
 --
--- All four of these names are in the shipping binary, but which one is a
--- reflected UFunction (and so reachable from Lua) is not something the binary
--- says. Try them in order and remember the one that worked, so a game patch
--- that moves the access path costs a different branch rather than a rewrite.
+-- All four names are in the shipping binary, but which one is a reflected
+-- UFunction (and so reachable from Lua) is not something the binary says. Try
+-- them in order and remember what worked, so a patch that moves the access path
+-- costs a different branch rather than a rewrite.
 local ACCESSORS = {
     {
         name = "character:GetIndividualCharacterParameter()",
@@ -73,8 +79,7 @@ local function usable(parameter)
     if not parameter then return false end
     local ok, valid = pcall(function() return parameter:IsValid() end)
     if not (ok and valid) then return false end
-    local reads = pcall(function() return parameter:GetExp() end)
-    return reads
+    return pcall(function() return parameter:GetExp() end)
 end
 
 function players.parameter(character)
@@ -83,7 +88,7 @@ function players.parameter(character)
     if chosen then
         local ok, parameter = pcall(chosen.get, character)
         if ok and usable(parameter) then return parameter end
-        chosen = nil  -- it stopped working; fall through and look again
+        chosen = nil  -- it stopped working; look again
     end
 
     for _, accessor in ipairs(ACCESSORS) do
@@ -108,9 +113,9 @@ local function number(value)
     return nil
 end
 
--- Total XP earned over the character's life, not progress within the level:
--- a save stores 73,865 for a level 21 player whose level began at 68,784. That
--- makes differences between two readings the amount actually earned.
+-- Total XP earned over the character's life, not progress within the level: a
+-- save stores 73,865 for a level 21 player whose level began at 68,784. That
+-- makes the difference between two readings the amount actually earned.
 function players.exp(character)
     local parameter = players.parameter(character)
     if not parameter then return nil end
@@ -127,20 +132,27 @@ function players.level(character)
     return number(value)
 end
 
--- A stable identity. The player's UId survives reconnects and is not reused,
+local function player_state(character)
+    local ok, state = pcall(function() return character:GetPlayerState() end)
+    if ok and state and state:IsValid() then return state end
+    ok, state = pcall(function() return character.PlayerState end)
+    if ok and state and state:IsValid() then return state end
+    return nil
+end
+
+-- A stable identity. The player's UId survives a reconnect and is not reused,
 -- unlike an object address.
 function players.key(character)
     if not (character and character:IsValid()) then return nil end
 
-    local ok, uid = pcall(function()
-        return character:GetPalPlayerController().PlayerState.PlayerUId
-    end)
-    if ok and uid then
-        local formatted, text = pcall(function()
+    local state = player_state(character)
+    if state then
+        local ok, text = pcall(function()
+            local uid = state.PlayerUId
             return string.format("%08X-%08X-%08X-%08X",
                 uid.A or 0, uid.B or 0, uid.C or 0, uid.D or 0)
         end)
-        if formatted and text then return text end
+        if ok and text then return text end
     end
 
     local addressed, address = pcall(function() return character:GetAddress() end)
@@ -150,17 +162,23 @@ end
 
 function players.name(character)
     if not (character and character:IsValid()) then return "?" end
-    local ok, n = pcall(function()
-        return character:GetPalPlayerController().PlayerState.PlayerNamePrivate:ToString()
-    end)
-    if ok and n then return n end
+
+    local state = player_state(character)
+    if state then
+        local ok, n = pcall(function() return state.PlayerNamePrivate:ToString() end)
+        if ok and n then return n end
+    end
     return "?"
 end
 
--- Grant XP to one player by calling the game's own exp-giving function at that
--- player's feet, with a radius small enough to reach nobody else. Going through
--- the game means level-ups, UI and replication happen the way they normally do;
--- writing the Exp field directly would skip all of that.
+-- Grant XP by calling the game's own exp-giving function at the recipient's
+-- feet, with a radius small enough to reach nobody else. Going through the game
+-- means level-ups, UI and replication happen normally; writing the Exp field
+-- directly would skip all of that.
+--
+-- This is the one Palworld-specific call left, and it is the one that has not
+-- been proven safe on this build. probe.test_grant puts it behind its own key
+-- so that if it crashes, it crashes on its own and says so.
 --
 -- The radius is not zero because the call is a sphere overlap and the player's
 -- own capsule has to fall inside it.
@@ -170,16 +188,18 @@ function players.grant(character, amount)
     if not (character and character:IsValid()) then return false end
     if not amount or amount <= 0 then return false end
 
-    local w, u = world(), utility()
-    if not (w and u) then return false end
+    local w = players.world()
+    if not w then return false end
+
+    local utility = StaticFindObject("/Script/Pal.Default__PalUtility")
+    if not (utility and utility:IsValid()) then return false end
 
     local ok, location = pcall(function() return character:K2_GetActorLocation() end)
     if not (ok and location) then return false end
 
-    local granted = pcall(function()
-        u:GiveExpToAroundPlayerCharacter(w, location, GRANT_RADIUS, amount, true)
+    return pcall(function()
+        utility:GiveExpToAroundPlayerCharacter(w, location, GRANT_RADIUS, amount, true)
     end)
-    return granted
 end
 
 return players

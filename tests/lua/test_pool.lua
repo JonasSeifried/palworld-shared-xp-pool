@@ -11,6 +11,7 @@ local function load_pool(overrides)
     package.loaded["pool"] = nil
     package.loaded["players"] = nil
     package.loaded["config"] = nil
+    package.loaded["UEHelpers"] = nil
 
     local config = require("config")
     for k, v in pairs(overrides or {}) do config[k] = v end
@@ -199,6 +200,32 @@ test("players are tracked by identity, not by list position", function()
     local got = exp_by_name(state)
     assert_equal(got["Jonas"], 100, "Jonas")
     assert_equal(got["Keddo"], 100, "Keddo")
+end)
+
+test("reading never touches PalUtility", function()
+    -- The crash that killed run two came from enumerating through PalUtility:
+    -- a CDO call taking FindFirstOf("World") and returning an array of FText.
+    -- Nothing on the read path may go near it again. Paying out still may, and
+    -- that is deliberately a separate call behind a separate key.
+    local state = fake.reset({ "Jonas", "Keddo" })
+    local pool = load_pool()
+    local players = require("players")
+
+    local reached = false
+    local guarded = _G.StaticFindObject
+    _G.StaticFindObject = function(path)
+        reached = true
+        error("StaticFindObject must not be called while reading: " .. tostring(path))
+    end
+
+    pool.tick()
+    players.connected()
+    players.exp(state.players[1])
+    players.name(state.players[1])
+    players.key(state.players[1])
+
+    _G.StaticFindObject = guarded
+    assert_equal(reached, false, "PalUtility was left alone")
 end)
 
 real_print(string.format("\n%d passed, %d failed", passed, failed))

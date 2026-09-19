@@ -49,12 +49,11 @@ function fake.add_player(name, exp, level)
         GetCharacterParameterComponent = function(self)
             return { GetIndividualParameter = function() return make_parameter(self) end }
         end,
-        GetPalPlayerController = function(self)
+        GetPlayerState = function(self)
             return {
-                PlayerState = {
-                    PlayerNamePrivate = { ToString = function() return self._name end },
-                    PlayerUId = { A = self._index, B = 0, C = 0, D = 0 },
-                },
+                IsValid = function() return true end,
+                PlayerNamePrivate = { ToString = function() return self._name end },
+                PlayerUId = { A = self._index, B = 0, C = 0, D = 0 },
             }
         end,
     }
@@ -102,7 +101,28 @@ local utility = {
     end,
 }
 
+-- UEHelpers ships with UE4SS and the mod requires it by name. Standing it up
+-- through package.preload means the mod's own require finds it, rather than the
+-- test reaching inside the mod to inject anything.
+local function install_uehelpers()
+    package.loaded["UEHelpers"] = nil
+    package.preload["UEHelpers"] = function()
+        return {
+            GetWorld = function()
+                return { IsValid = function() return true end }
+            end,
+            GetAllPlayers = function()
+                local pawns = {}
+                for i, p in ipairs(state.players) do pawns[i] = p end
+                return pawns
+            end,
+        }
+    end
+end
+
 function fake.install()
+    install_uehelpers()
+
     _G.StaticFindObject = function(path)
         if path == "/Script/Pal.Default__PalUtility" then return utility end
         return nil

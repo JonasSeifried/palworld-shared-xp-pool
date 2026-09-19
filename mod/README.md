@@ -3,9 +3,9 @@
 The v1 mod: XP is shared as it is earned, instead of being reconciled after the
 fact by the save editor.
 
-**Status: discovery mode, one probe run done.** That run settled the design
-question and changed it. Sharing is written and unit-tested but still switched
-off; one more run decides whether it can be turned on.
+**Status: discovery mode, two probe runs done.** The first settled the design
+question and changed it. The second crashed the game. Sharing is written and
+unit-tested but still switched off.
 
 ## What the first probe run found
 
@@ -42,17 +42,42 @@ recipient's feet, so level-ups, UI and replication happen normally. Each payout
 is recorded and discounted from that player's next reading -- otherwise the mod
 would see its own gift as earnings and mirror it again, forever.
 
-## The next run decides it
+## What the second probe run found
 
-Press **F7** in game. The dump uses exactly the code the sharing uses, so it
-either prints the right names and the right XP, or it names the part that broke.
+Pressing F7 hard-crashed the game, before a single line of the dump reached the
+log. That puts it inside player enumeration, which was the first thing to run.
 
-**One player is enough.** What F7 answers -- can the mod enumerate players, and
-can it read their XP -- does not need anybody else. Only watching XP actually
-move between two people does, and that comes after.
+The likely causes were both in one line:
+`GetPlayerListDisplayMessages(FindFirstOf("World"))` on the `PalUtility` CDO.
+`FindFirstOf("World")` can return a `UWorld` that is not the one being played,
+and passing that into a Pal function is undefined; and the call returns an array
+of `FText`, which this UE4SS build has a changelog entry about crashing on.
 
-If the numbers match what the game shows you, set `probe_only = false` in
-`Scripts/config.lua` and play.
+Enumeration now goes through `UEHelpers.GetAllPlayers`, which walks
+`GameState.PlayerArray` to `PlayerState.PawnPrivate` -- plain Unreal, no text
+marshalling, and a world resolved through the player controller. It ships with
+UE4SS and is maintained alongside it. Nothing on the read path touches
+`PalUtility` any more, and a test fails if it ever does again.
+
+## The next run
+
+Two keys, in order. Both log before they act, not after: a native crash cannot
+be caught by `pcall`, so the only way to locate one is for the last line in the
+log to be the thing that was about to run.
+
+**F7 -- read.** Prints each player's name, level, XP and key, and which accessor
+found the XP. Touches nothing Palworld-specific.
+
+**F8 -- pay.** Grants 1 XP to the first player and reads it back.
+`GiveExpToAroundPlayerCharacter` is the one Pal-specific call the mod still
+makes and the only one not yet proven safe here, so it is on its own key.
+Nothing should ever trigger it as a side effect of looking.
+
+**One player is enough for both.** Only watching XP move between two people
+needs a second player, and that comes last.
+
+If F7 shows XP matching what the game shows you and F8 moves it by 1, set
+`probe_only = false` in `Scripts/config.lua` and play.
 
 ## Install
 
@@ -126,11 +151,15 @@ build-dependent, and remembers the one that worked.
 lua tests/lua/test_pool.lua
 ```
 
-Eleven tests against a stubbed UE4SS: the baseline tick, mirroring, splitting,
+Twelve tests against a stubbed UE4SS: the baseline tick, mirroring, splitting,
 late joiners, unreadable players, identity tracking, and the accessor
 fall-through.
 
-Two of them are the ones that matter. Grants really move the number in the fake,
-so a payout comes back round on the next reading exactly as it would in game --
-without the bookkeeping that discounts it, XP compounds forever and those two
-tests fail. `pytest` runs the suite too, and skips if Lua is not installed.
+Three of them earn their keep. Grants really move the number in the fake, so a
+payout comes back round on the next reading exactly as it would in game --
+without the bookkeeping that discounts it, XP compounds forever and two tests
+fail. The third fails the moment anything on the read path calls
+`StaticFindObject`, which is what crashed the game. All three were checked by
+breaking the code and watching them go red.
+
+`pytest` runs the suite too, and skips if Lua is not installed.
