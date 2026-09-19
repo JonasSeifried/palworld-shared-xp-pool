@@ -26,6 +26,9 @@ You do not need the save editor to use the mod.
 On the **host's** machine only -- Palworld decides XP server-side, so joining
 players need nothing.
 
+Take the zip from a [release](../../releases) and extract it over your Palworld
+folder. To work on the mod instead, junction it into the game:
+
 ```powershell
 .\tools\install_ue4ss.ps1 -Dev
 .\tools\link_mod.ps1
@@ -40,7 +43,9 @@ Full instructions, settings and the honest list of what it does not do are in
 lua mod/tests/test_pool.lua
 ```
 
-The save editor's suite is separate; see [save-editor/](save-editor/).
+The save editor's suite is separate; see [save-editor/](save-editor/). Both run
+on every push, and tagging `v*` builds the release zip -- see
+[.github/workflows/](.github/workflows/).
 
 ## Licence
 

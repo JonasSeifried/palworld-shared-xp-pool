@@ -32,6 +32,14 @@ off: Palworld has no player-only XP call.
 On the **host's** machine only. Palworld decides XP server-side, so the host
 decides it for everyone and joining clients need nothing installed.
 
+**Playing it:** take the zip from a [release](../../../releases) and extract it
+over the Palworld folder -- the one with `Pal\` in it. Everything lands in
+`Pal\Binaries\Win64\ue4ss\Mods\SharedXPPool\`. [`INSTALL.txt`](INSTALL.txt) is
+the same instructions, and ships inside the zip.
+
+**Working on it:** the two scripts below instead, which junction this folder
+into the game so edits take effect in place.
+
 ```powershell
 .\tools\install_ue4ss.ps1 -Dev
 .\tools\link_mod.ps1
@@ -157,6 +165,7 @@ anything is paid. Pause first, or the mod's own payouts are in the readings.
 | `Scripts/pool.lua` | the rule |
 | `Scripts/players.lua` | finding players, reading their XP, paying them |
 | `Scripts/probe.lua` | discovery: the hooks, the F7 dump, the F9 signatures |
+| `INSTALL.txt` | what ships in the zip, for somebody who has only the zip |
 
 `probe.lua` is a third of the mod's code and none of it runs in a normal
 session, so it is not loaded unless `debug_keys` or `probe_only` is set. Of the

@@ -1,0 +1,65 @@
+Shared XP Pool -- everyone in your world stays at the same level.
+https://github.com/JonasSeifried/palworld-shared-xp-pool
+
+
+INSTALL ON THE HOST ONLY
+------------------------
+
+Palworld decides XP server-side, so whoever hosts the world decides it for
+everybody. People joining you install nothing.
+
+1. Install UE4SS -- Okaetsu's Palworld fork, not stock RE-UE4SS:
+   https://github.com/Okaetsu/RE-UE4SS/releases/latest
+
+   Stock RE-UE4SS does not work. Palworld made engine edits in 0.4.1.5 and
+   needs that build.
+
+   If you already subscribed to a UE4SS copy on the Steam Workshop, unsubscribe
+   from it. Two copies load at once and the game crashes on launch.
+
+2. Extract this archive over your Palworld folder, the one with Pal\ in it:
+
+     ...\steamapps\common\Palworld\
+
+   The files land in Pal\Binaries\Win64\ue4ss\Mods\SharedXPPool\.
+
+3. Start the game and host your world.
+
+
+DID IT WORK
+-----------
+
+Look in Pal\Binaries\Win64\ue4ss\UE4SS.log for:
+
+  [SharedXPPool] loading
+  [SharedXPPool] sharing active, checking every 1000 ms
+  [SharedXPPool] ready -- bound: F11 pause/resume sharing  (debug keys off)
+
+F11 pauses and resumes sharing while you play. Nothing accumulates while it is
+paused.
+
+
+SETTINGS
+--------
+
+Scripts\config.lua, with the reasoning written next to each one. The only one
+most people touch:
+
+  config.catch_up_rate = 0.25   -- a quarter of the gap per second
+                                -- 1.0 is instant, 0 is off
+
+Set config.verbose = false if you would rather have one summary line per tick
+than one line per player.
+
+
+UNINSTALL
+---------
+
+Delete Pal\Binaries\Win64\ue4ss\Mods\SharedXPPool\.
+
+Nothing is written to your save. The mod adds XP through the game's own
+function, so what it has already granted stays -- as it would if you had earned
+it. Nobody is ever lowered, by the mod or by removing it.
+
+
+MIT licensed. See LICENSE.txt.
