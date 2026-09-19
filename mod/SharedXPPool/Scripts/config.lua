@@ -85,6 +85,20 @@ config.share_radius = nil
 -- while measuring, or the pool's own payouts appear in the readings.
 config.watch_rises = false
 
+-- Palworld's own tuning constants, written once when a world is loaded.
+--
+-- These live on BP_PalGameSetting_C and are ordinary numbers. The interesting
+-- one found so far is MapObjectDistributeExpRange, the distance over which XP
+-- from destroying a map object is shared -- 1000 units, roughly ten metres.
+-- Widening it makes the game share that XP itself, which beats the pool
+-- inferring afterwards who was near enough to have received it.
+--
+-- Empty by default. Every write is read back and reported, and a name this
+-- build does not have is skipped with a line saying so. F9 lists what exists.
+--
+--   config.game_settings = { MapObjectDistributeExpRange = 1000000.0 }
+config.game_settings = {}
+
 -- How much XP the F6 and F8 test payouts hand over.
 --
 -- 1 is right for "did the payout land, and on whom". It is useless for checking

@@ -39,6 +39,16 @@ function fake.reset(player_names)
         precise_available = true,
         sphere_calls = 0,
         delayed = {},
+        -- Palworld's tuning constants, which the mod can write. Real names,
+        -- with the values this build reports.
+        game_setting = {
+            IsValid = function() return true end,
+            MapObjectDistributeExpRange = 1000.0,
+            MapObjectDestroyProceedExp = 5,
+            -- Stands in for a property that refuses to take a new value.
+            ReadOnlyRange = 42.0,
+        },
+        game_setting_available = true,
     }
 
     for i, name in ipairs(player_names or {}) do
@@ -274,6 +284,9 @@ function fake.install()
         if class == "World" then return { IsValid = function() return true end } end
         if class == "PalExpDatabase" and state.precise_available then
             return exp_database
+        end
+        if class == "PalGameSetting" and state.game_setting_available then
+            return state.game_setting
         end
         return nil
     end

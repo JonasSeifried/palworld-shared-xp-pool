@@ -11,6 +11,7 @@ local function load_pool(overrides)
     package.loaded["pool"] = nil
     package.loaded["players"] = nil
     package.loaded["config"] = nil
+    package.loaded["settings"] = nil
     package.loaded["UEHelpers"] = nil
 
     local config = require("config")
@@ -24,7 +25,8 @@ end
 -- it for real rather than reach into it. Requiring config first and editing it
 -- means main's own require finds the edited one.
 local function load_main(overrides)
-    for _, name in ipairs({ "probe", "players", "config", "pool", "UEHelpers" }) do
+    for _, name in ipairs({ "probe", "players", "config", "pool", "settings",
+                            "UEHelpers" }) do
         package.loaded[name] = nil
     end
 
@@ -885,6 +887,92 @@ test("the probe hunts for a settable share radius, safely", function()
     -- never asked for, which is the rule that keeps this from killing the game.
     assert_equal(said(state, "CachedTable: StructProperty = not read"), true,
         "the struct was named but not opened")
+end)
+
+test("no game setting is touched unless one is asked for", function()
+    local state = fake.reset({ "P1", "P2" })
+    local pool = load_pool()
+    pool.tick()
+
+    assert_equal(state.game_setting.MapObjectDistributeExpRange, 1000.0, "untouched")
+    assert_equal(said(state, "MapObjectDistributeExpRange"), false, "and nothing said")
+end)
+
+test("a game setting is written, read back, and reported", function()
+    -- The whole point of widening Palworld's own sharing rather than inferring
+    -- it afterwards. A write that silently did nothing would leave the pool
+    -- trusting a radius that never changed, so it is always read back.
+    local state = fake.reset({ "P1", "P2" })
+    local pool = load_pool({
+        game_settings = { MapObjectDistributeExpRange = 1000000.0 },
+    })
+    pool.tick()
+
+    assert_equal(state.game_setting.MapObjectDistributeExpRange, 1000000.0, "written")
+    assert_equal(said(state, "MapObjectDistributeExpRange: 1000.0 -> 1000000.0"), true,
+        "and reported")
+end)
+
+test("a setting this build does not have is reported, not skipped quietly", function()
+    local state = fake.reset({ "P1", "P2" })
+    local pool = load_pool({ game_settings = { NoSuchSettingHere = 5 } })
+    pool.tick()
+
+    assert_equal(said(state, "NoSuchSettingHere: no such setting"), true, "said so")
+end)
+
+test("a write that does not take is reported rather than assumed", function()
+    local state = fake.reset({ "P1", "P2" })
+    -- A property that accepts assignment and keeps its old value, which is what
+    -- a protected or replicated setting looks like from Lua.
+    state.game_setting.ReadOnlyRange = nil
+    setmetatable(state.game_setting, {
+        __index = function(_, key)
+            if key == "ReadOnlyRange" then return 42.0 end
+            return nil
+        end,
+        __newindex = function(t, key, value)
+            if key == "ReadOnlyRange" then return end
+            rawset(t, key, value)
+        end,
+    })
+    local pool = load_pool({ game_settings = { ReadOnlyRange = 99.0 } })
+    pool.tick()
+
+    assert_equal(state.game_setting.ReadOnlyRange, 42.0, "value held")
+    assert_equal(said(state, "ReadOnlyRange: tried to set 99.0 but it reads 42.0"), true,
+        "and it said the write did not take")
+end)
+
+test("settings are written once, not every tick", function()
+    local state = fake.reset({ "P1", "P2" })
+    local pool = load_pool({
+        game_settings = { MapObjectDistributeExpRange = 1000000.0 },
+    })
+    for _ = 1, 20 do pool.tick() end
+
+    local lines = 0
+    for _, line in ipairs(state.output) do
+        if line:find("MapObjectDistributeExpRange", 1, true) then lines = lines + 1 end
+    end
+    assert_equal(lines, 1, "reported once")
+end)
+
+test("settings wait for a world rather than giving up", function()
+    -- FindFirstOf returns nothing until a world is loaded, which is every tick
+    -- for the first half minute of a session.
+    local state = fake.reset({ "P1", "P2" })
+    state.game_setting_available = false
+    local pool = load_pool({
+        game_settings = { MapObjectDistributeExpRange = 1000000.0 },
+    })
+    pool.tick()
+    assert_equal(said(state, "MapObjectDistributeExpRange"), false, "nothing yet")
+
+    state.game_setting_available = true
+    pool.tick()
+    assert_equal(state.game_setting.MapObjectDistributeExpRange, 1000000.0,
+        "written once the world turned up")
 end)
 
 real_print(string.format("\n%d passed, %d failed", passed, failed))

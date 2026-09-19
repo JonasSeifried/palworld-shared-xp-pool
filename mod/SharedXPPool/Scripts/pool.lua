@@ -56,6 +56,7 @@
 
 local config = require("config")
 local players = require("players")
+local settings = require("settings")
 
 local pool = {}
 
@@ -234,6 +235,10 @@ local function water_fill(entries, budget, ceiling)
 end
 
 local function tick()
+    -- Needs a loaded world, which the mod does not have when it starts, so it
+    -- is attempted from here until it takes. Returns true once it is settled.
+    settings.apply()
+
     local connected = players.connected()
     if #connected == 0 then return end
 

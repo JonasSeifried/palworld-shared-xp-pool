@@ -314,18 +314,38 @@ Pause sharing first with the pause key, or the pool's own payouts turn up in the
 readings. An evening of ordinary play then shows the distance at which one
 player's kill stops moving the other player's total.
 
-**Better still, if it turns out to exist:** widen Palworld's own radius instead
-of working around it. Then the game hands every award to everybody itself, with
-the right amounts, the right pal XP and the right level-ups, and none of the
-above is needed -- there is never a tick where one player gained and another did
-not, so there is nothing left to infer.
+**Better still, where it exists:** widen Palworld's own radius instead of
+working around it. Then the game hands every award to everybody itself, with the
+right amounts, the right pal XP and the right level-ups, and there is nothing
+left to infer -- no tick where one player gained and another did not.
 
-The kill path offers no way in: kills fire `AddExp_EnemyDeath` and not
-`GiveExpToAroundPlayerCharacter`, so the sharing happens inside native code with
-no reflected radius to intercept. A property on a live object is the remaining
-possibility, and `BP_PalExpDatabase_C` is a Blueprint, so it may well expose one.
-**F9** now hunts for one and marks anything plausible with `***`. Worth pressing
-before relying on `share_radius` at all.
+One such radius is confirmed. `BP_PalGameSetting_C` carries the game's tuning
+constants as ordinary writable numbers, and among its 680 properties:
+
+```
+MapObjectDistributeExpRange: FloatProperty = 1000.0
+MapObjectDestroyProceedExp:  IntProperty   = 5
+```
+
+The second is the `+5` that shows up in the watch log all session; the first is
+how far that XP is shared, about ten metres. `config.game_settings` writes them:
+
+```lua
+config.game_settings = { MapObjectDistributeExpRange = 1000000.0 }
+```
+
+Written once when a world loads, read back, and reported -- a write that quietly
+does nothing would leave the pool trusting a radius that never changed, so it is
+never assumed to have worked.
+
+That covers map objects: mining, chopping, harvesting. **Kills are not settled.**
+They fire `AddExp_EnemyDeath` and not `GiveExpToAroundPlayerCharacter`, so that
+sharing happens in native code, and no kill-related range has turned up yet --
+though the first pass of the dump truncated at 300 of the 680 properties, so
+more than half of them have not actually been looked at.
+
+**F9** lists every property with its class and value, marking plausible names
+with `***`. Worth pressing before relying on `share_radius` at all.
 
 ## Closing a gap that already exists
 
@@ -386,22 +406,30 @@ crafting a pal sphere    player +5    active pal +1
 killing a pal            player +12   active pal +2
 ```
 
-So a pal gets roughly a fifth of what the player gets, and -- the useful part --
-the fraction looks the same whether the XP came from crafting or from a kill. A
-uniform ratio means the mod does not have to care where XP came from, which is
-the same reason watching totals works at all.
+A capture then gave the player 39 and the pal 2, which is a twentieth, not a
+fifth. So vanilla's share is **not** a fixed fraction, and `PalGameSetting` says
+why:
 
-What is confirmed, from the two-player run: a player topped up by the pool has
-their active pal gain alongside them, exactly as a player who earned it does.
-What is **not** confirmed is the fraction -- whether
-`AddExpValue_forPlayerParty_Server` hands the party the same fifth the game
-does, or something else.
+```
+OtomoExp_LevelDifferenceMap: MapProperty
+OtomoExp_HigherPlayerLevel:  IntProperty = 10
+```
 
-That is measurable alone. `config.test_grant_amount` sets how much F6 and F8 pay
-out; the default of 1 is useless here, because a fifth of 1 rounds to nothing.
-Set it to a few hundred, press F8, and compare the pal's gain against the
-player's. If it is a fifth, the mod is faithful to vanilla and there is nothing
-to do.
+It is driven by the gap between the pal's level and the player's, not by the
+amount.
+
+**The pool's payout is a flat fifth.** Granting 100 through
+`AddExpValue_forPlayerParty_Server` gave the player 100 and the active pal 20 --
+and with two pals out, 20 each. Granting 1 gave the pal 1, so it rounds up.
+
+So a pal belonging to a player topped up by the pool gains at the generous end of
+what vanilla would have given, rather than exactly what vanilla would have given.
+Worth knowing; not worth chasing. The only obvious alternative,
+`AddExp_forPlayerParty_ByExpCalcType`, takes a rate rather than an amount, so it
+cannot pay out a specific number and is no use to the pool.
+
+`config.test_grant_amount` is what made this measurable: it sets how much F6 and
+F8 hand over, since a fifth of the default 1 XP rounds to nothing.
 
 ## Scope
 
@@ -411,7 +439,12 @@ between sessions.
 
 **Pals are not written to directly**, same as v0 -- but they are not untouched,
 because the payout goes through a function whose name ends in `forPlayerParty`
-and the party comes along. See below.
+and the party comes along. See above.
+
+**The level cap is 80 on this build**, per `CharacterMaxLevel` in
+`PalGameSetting`, where `data/exp_table.json` runs to 100. Untested at the cap:
+a player who can no longer gain XP reads as earning nothing every tick, so they
+would be paid every tick to no effect.
 
 **The tech tree is not shared.** Reasoning in the [root README](../README.md);
 in short, a shared XP pool already puts everyone on the same technology point
@@ -424,6 +457,7 @@ income. Sharing the tree is a v2 decision.
 | `Scripts/config.lua` | every knob, with the reasoning next to it |
 | `Scripts/pool.lua` | watching totals and sharing the difference |
 | `Scripts/players.lua` | finding players, reading their XP, paying them |
+| `Scripts/settings.lua` | writing Palworld's own tuning constants |
 | `Scripts/probe.lua` | discovery: the hooks, the F7 dump, the F9 radius hunt |
 
 `players.lua` enumerates through `UEHelpers.GetAllPlayers`. Not
@@ -440,7 +474,7 @@ worked.
 lua tests/lua/test_pool.lua
 ```
 
-Forty-two tests against a stubbed UE4SS. The fake models what the game actually
+Forty-eight tests against a stubbed UE4SS. The fake models what the game actually
 does, which is the part that matters: a payout really moves the number, and in
 `propagate` mode it moves *everyone's*, the way paying one player raised the
 other in game.
@@ -462,6 +496,8 @@ The ones worth having:
 - players too far apart to have shared add their gains together
 - players close enough to have shared are still counted once
 - a distance that cannot be read merges rather than splits
+- a game setting is written, read back, and reported
+- a write that does not take is reported rather than assumed
 
 Each was checked by breaking the code it defends and watching it go red. The
 first one only exists because removing the re-read broke nothing in the suite --

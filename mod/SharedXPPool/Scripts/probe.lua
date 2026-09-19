@@ -339,8 +339,11 @@ function probe.dump_share_radius()
 
             local walked = got and class and for_each_property_in_chain(class,
                 function(property, owner)
+                    -- PalGameSetting alone has 680, and the first cut of
+                    -- this stopped at 300 -- which hid more than half of the
+                    -- thing it was written to find.
                     seen = seen + 1
-                    if seen > 300 then return end
+                    if seen > 2000 then return end
 
                     local name = name_of(property) or "?"
                     local kind = name_of(property:GetClass()) or "?"
