@@ -282,4 +282,36 @@ function players.precise_payout()
     return precise_works
 end
 
+-- The player's active pal, if it can be reached.
+--
+-- Only the probe uses this, to answer whether a payout reaches the party as
+-- well as the player. In vanilla a player's active pal gains XP when they do,
+-- so if a top-up skips the pal, the player being topped up ends up with pals
+-- that level slower than the player doing the killing.
+local OTOMO_HOLDERS = {
+    function(c) return c:GetOtomoHolderComponent() end,
+    function(c) return c:GetOtomoHolder() end,
+}
+
+function players.active_pal(character)
+    if not (character and character:IsValid()) then return nil end
+
+    for _, reach in ipairs(OTOMO_HOLDERS) do
+        local ok, holder = pcall(reach, character)
+        if ok and holder then
+            local valid = pcall(function() return holder:IsValid() end)
+            if valid then
+                local got, pal = pcall(function()
+                    return holder:TryGetOtomoActorBySlotIndex(0)
+                end)
+                if got and pal then
+                    local alive = pcall(function() return pal:IsValid() end)
+                    if alive then return pal end
+                end
+            end
+        end
+    end
+    return nil
+end
+
 return players

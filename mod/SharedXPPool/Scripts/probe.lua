@@ -171,9 +171,18 @@ function probe.test_grant()
     end
 
     local target = list[1]
-    log("paying " .. players.name(target) .. " 1 xp via PalUtility:GiveExpToAroundPlayerCharacter")
+
+    -- Vanilla gives a player's active pal XP when the player earns some. If a
+    -- payout skips the pal, the player being topped up ends up with pals that
+    -- level slower than the player doing the killing, so it is worth knowing
+    -- which way round this call behaves.
+    local pal = players.active_pal(target)
+    local pal_before = pal and players.exp(pal) or nil
+
+    log("paying " .. players.name(target) .. " 1 xp")
     local ok = players.grant(target, 1)
-    log("call returned: " .. tostring(ok))
+    log("call returned: " .. tostring(ok)
+        .. "  (route: " .. tostring(players.precise_payout()) .. ")")
 
     local moved = 0
     for i, character in ipairs(list) do
@@ -194,6 +203,16 @@ function probe.test_grant()
                 or ("distance " .. (away and string.format("%.0f", away) or "?"))))
 
         if delta and delta > 0 then moved = moved + 1 end
+    end
+
+    if pal then
+        local pal_after = players.exp(pal)
+        local pal_delta = (pal_after and pal_before) and (pal_after - pal_before) or nil
+        log(string.format("  %-16s %s -> %s  (%s xp)  <- the payer's active pal",
+            "(pal)", tostring(pal_before), tostring(pal_after),
+            pal_delta and string.format("%+d", pal_delta) or "?"))
+    else
+        log("  (no active pal out, so nothing to say about the party)")
     end
 
     if moved == 0 then
