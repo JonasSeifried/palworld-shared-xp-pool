@@ -154,14 +154,16 @@ end
 --
 -- Run it once standing next to each other, once far apart. The difference is
 -- the answer.
-function probe.test_grant()
+function probe.test_grant(which)
     local players = require("players")
 
-    log("---- grant test ----")
+    which = which or 1
+
+    log("---- grant test (player " .. which .. ") ----")
 
     local list = players.connected()
-    if #list == 0 then
-        log("STOP -- no players to pay.")
+    if #list < which then
+        log("STOP -- there is no player " .. which .. "; only " .. #list .. " connected.")
         return
     end
 
@@ -170,14 +172,22 @@ function probe.test_grant()
         before[i] = players.exp(character)
     end
 
-    local target = list[1]
+    local target = list[which]
 
-    -- Vanilla gives a player's active pal XP when the player earns some. If a
-    -- payout skips the pal, the player being topped up ends up with pals that
-    -- level slower than the player doing the killing, so it is worth knowing
-    -- which way round this call behaves.
-    local pal, why_no_pal = players.active_pal(target)
-    local pal_before = pal and players.exp(pal) or nil
+    -- Vanilla gives a player's active pal XP when the player earns some. Paying
+    -- a player directly clearly reaches their pal. The case that needs testing
+    -- is the other one: when somebody *else* earns and this player is topped up
+    -- by the pool, does their pal come along? Pay another player and watch this
+    -- one's pal to find out.
+    local pals, pal_before = {}, {}
+    for i, character in ipairs(list) do
+        local pal, why = players.active_pal(character)
+        pals[i] = pal
+        pal_before[i] = pal and players.exp(pal) or nil
+        if not pal then
+            log("  (no pal for " .. players.name(character) .. ": " .. tostring(why) .. ")")
+        end
+    end
 
     log("paying " .. players.name(target) .. " 1 xp")
     local ok = players.grant(target, 1)
@@ -188,7 +198,7 @@ function probe.test_grant()
     for i, character in ipairs(list) do
         local after = players.exp(character)
         local delta = (after and before[i]) and (after - before[i]) or nil
-        local away = (i == 1) and 0 or distance(character, target)
+        local away = (i == which) and 0 or distance(character, target)
 
         -- "%+s" is not a thing: the + flag is for numbers, and string.format
         -- raises on it. Build the signed text by hand so a nil delta is still
@@ -199,20 +209,19 @@ function probe.test_grant()
             players.name(character),
             tostring(before[i]), tostring(after),
             change,
-            i == 1 and "<- the one being paid"
+            i == which and "<- the one being paid"
                 or ("distance " .. (away and string.format("%.0f", away) or "?"))))
 
         if delta and delta > 0 then moved = moved + 1 end
     end
 
-    if pal then
+    for i, pal in pairs(pals) do
         local pal_after = players.exp(pal)
-        local pal_delta = (pal_after and pal_before) and (pal_after - pal_before) or nil
-        log(string.format("  %-16s %s -> %s  (%s xp)  <- the payer's active pal",
-            "(pal)", tostring(pal_before), tostring(pal_after),
-            pal_delta and string.format("%+d", pal_delta) or "?"))
-    else
-        log("  (could not reach the payer's pal: " .. tostring(why_no_pal) .. ")")
+        local pal_delta = (pal_after and pal_before[i]) and (pal_after - pal_before[i]) or nil
+        log(string.format("  %-16s %s -> %s  (%s xp)  <- %s's pal",
+            "(pal)", tostring(pal_before[i]), tostring(pal_after),
+            pal_delta and string.format("%+d", pal_delta) or "?",
+            players.name(list[i])))
     end
 
     if moved == 0 then
@@ -223,6 +232,35 @@ function probe.test_grant()
         log("LEAK -- the payout reached " .. moved .. " players. Note the "
             .. "distances above, then run this again standing far apart.")
     end
+
+    -- Everything above is the direct payout. The pool has not run yet -- it
+    -- ticks on its own schedule -- so the interesting part, whether a player
+    -- topped up by the pool brings their pal along, has not happened. Look
+    -- again once it has, measuring from the same baseline.
+    local config = require("config")
+    ExecuteWithDelay(config.poll_interval_ms + 500, function()
+        local ok, err = pcall(function()
+            log("---- after the pool ticked ----")
+            for i, character in ipairs(list) do
+                local now = players.exp(character)
+                local total = (now and before[i]) and (now - before[i]) or nil
+                log(string.format("  %-16s %s xp in total",
+                    players.name(character),
+                    total and string.format("%+d", total) or "?"))
+            end
+            for i, pal in pairs(pals) do
+                local now = players.exp(pal)
+                local total = (now and pal_before[i]) and (now - pal_before[i]) or nil
+                log(string.format("  %-16s %s xp in total  <- %s's pal",
+                    "(pal)",
+                    total and string.format("%+d", total) or "?",
+                    players.name(list[i])))
+            end
+        end)
+        if not ok then
+            log("follow-up reading failed: " .. tostring(err))
+        end
+    end)
 end
 
 local function name_of(object)

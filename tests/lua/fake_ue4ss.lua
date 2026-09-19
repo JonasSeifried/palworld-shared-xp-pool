@@ -38,6 +38,7 @@ function fake.reset(player_names)
         -- force the radius fallback.
         precise_available = true,
         sphere_calls = 0,
+        delayed = {},
     }
 
     for i, name in ipairs(player_names or {}) do
@@ -79,6 +80,14 @@ function fake.add_player(name, exp, level)
 end
 
 function fake.state() return state end
+
+-- Run whatever ExecuteWithDelay has queued so far, once each.
+function fake.run_delayed()
+    local queued = state.delayed
+    state.delayed = {}
+    for _, callback in ipairs(queued) do callback() end
+    return #queued
+end
 
 function fake.param(value)
     return { get = function() return value end }
@@ -246,10 +255,17 @@ function fake.install()
     _G.FindAllOf = function() return nil end
     _G.RegisterHook = function(path, callback) state.hooks[path] = callback return 1, 2 end
     _G.RegisterKeyBind = function(key, handler) state.keybinds[key] = handler end
-    _G.ExecuteWithDelay = function() end
+    -- Queue rather than run. Running immediately would send the pool's
+    -- self-rescheduling loop straight into a stack overflow, and never running
+    -- would leave the probe's delayed reading untested. fake.run_delayed drains
+    -- what is queued at that moment, so a callback that queues another one does
+    -- not loop.
+    _G.ExecuteWithDelay = function(_, callback)
+        state.delayed[#state.delayed + 1] = callback
+    end
     -- Distinct values, so a test can tell the keys apart rather than watching
     -- them overwrite each other at index 0.
-    _G.Key = { F7 = 7, F8 = 8, F9 = 9 }
+    _G.Key = { F6 = 6, F7 = 7, F8 = 8, F9 = 9 }
     _G.print = function(line) state.output[#state.output + 1] = line end
 end
 

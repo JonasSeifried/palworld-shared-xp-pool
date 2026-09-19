@@ -314,13 +314,19 @@ test("main binds every probe key", function()
 
     dofile("mod/SharedXPPool/Scripts/main.lua")
 
+    assert_equal(type(state.keybinds[6]), "function", "F6 bound")
     assert_equal(type(state.keybinds[7]), "function", "F7 bound")
     assert_equal(type(state.keybinds[8]), "function", "F8 bound")
     assert_equal(type(state.keybinds[9]), "function", "F9 bound")
 
+    state.keybinds[6]()
     state.keybinds[7]()
     state.keybinds[8]()
     state.keybinds[9]()
+
+    -- The grant test schedules a second reading for after the pool ticks;
+    -- that callback has to survive too.
+    fake.run_delayed()
 
     -- Every handler is wrapped so a fault cannot take the game down, which
     -- also means a broken one looks like a working one from in game. F8 once

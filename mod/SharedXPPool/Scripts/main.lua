@@ -43,8 +43,14 @@ local function bind(key, name, fn)
     end
 end
 
+-- F8 pays the first player, F6 the second. Paying somebody else is the only
+-- way to watch what the pool's top-up does to *your* side: whether being topped
+-- up brings your pal along the way earning it yourself does.
+--
+-- F10 is left alone; UE4SS's console enabler already uses it.
+bind(Key.F6, "F6 test_grant(player 2)", function() probe.test_grant(2) end)
 bind(Key.F7, "F7 dump_players", probe.dump_players)
-bind(Key.F8, "F8 test_grant", probe.test_grant)
+bind(Key.F8, "F8 test_grant(player 1)", function() probe.test_grant(1) end)
 bind(Key.F9, "F9 dump_exp_api", probe.dump_exp_api)
 
 -- Report what actually got bound rather than what was meant to be. A key that

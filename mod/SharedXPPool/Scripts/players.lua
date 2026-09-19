@@ -288,50 +288,71 @@ end
 -- well as the player. In vanilla a player's active pal gains XP when they do,
 -- so if a top-up skips the pal, the player being topped up ends up with pals
 -- that level slower than the player doing the killing.
-local OTOMO_HOLDERS = {
-    { name = "GetOtomoHolderComponent()", get = function(c) return c:GetOtomoHolderComponent() end },
-    { name = "GetOtomoHolder()", get = function(c) return c:GetOtomoHolder() end },
-    { name = ".OtomoHolderComponent", get = function(c) return c.OtomoHolderComponent end },
-    { name = ".OtomoHolder", get = function(c) return c.OtomoHolder end },
+local function from_holder(holder)
+    if not holder then return nil end
+    local valid, is_valid = pcall(function() return holder:IsValid() end)
+    if not (valid and is_valid) then return nil end
+    local got, pal = pcall(function() return holder:TryGetOtomoActorBySlotIndex(0) end)
+    if got and pal then return pal end
+    return nil
+end
+
+local PAL_ROUTES = {
+    { name = "GetOtomoPal()", get = function(c) return c:GetOtomoPal() end },
+    { name = ".CachedActiveOtomo", get = function(c) return c.CachedActiveOtomo end },
+    {
+        name = "GetOtomoHolderComponent() -> slot 0",
+        get = function(c) return from_holder(c:GetOtomoHolderComponent()) end,
+    },
+    {
+        name = "GetOtomoHolder() -> slot 0",
+        get = function(c) return from_holder(c:GetOtomoHolder()) end,
+    },
+    {
+        -- The holder is a Blueprint component, so it may not be reachable by
+        -- name at all. Walking the actor's own component list finds it without
+        -- needing to know what the accessor is called.
+        name = "BlueprintCreatedComponents -> OtomoHolder -> slot 0",
+        get = function(c)
+            local components = c.BlueprintCreatedComponents
+            if not components then return nil end
+            for i = 1, #components do
+                local component = components[i]
+                local ok, class = pcall(function()
+                    return component:GetClass():GetFName():ToString()
+                end)
+                if ok and class and class:find("OtomoHolder") then
+                    return from_holder(component)
+                end
+            end
+            return nil
+        end,
+    },
 }
 
--- Returns the pal, or nil and a line saying what was tried and what happened.
--- The first version returned a bare nil and the probe reported "no active pal
--- out" while one was standing right there, which is worse than not reporting at
--- all.
+-- Returns the pal, or nil and a line saying what each route did. The first
+-- version returned a bare nil, and the probe reported "no active pal out" with
+-- a pal standing right there -- worse than not reporting at all.
 function players.active_pal(character)
     if not (character and character:IsValid()) then return nil, "no character" end
 
     local tried = {}
 
-    for _, route in ipairs(OTOMO_HOLDERS) do
-        local ok, holder = pcall(route.get, character)
+    for _, route in ipairs(PAL_ROUTES) do
+        local ok, pal = pcall(route.get, character)
         if not ok then
             tried[#tried + 1] = route.name .. " raised"
-        elseif not holder then
+        elseif not pal then
             tried[#tried + 1] = route.name .. " gave nothing"
         else
-            local valid, is_valid = pcall(function() return holder:IsValid() end)
-            if not (valid and is_valid) then
-                tried[#tried + 1] = route.name .. " gave an invalid holder"
-            else
-                local got, pal = pcall(function()
-                    return holder:TryGetOtomoActorBySlotIndex(0)
-                end)
-                if not got then
-                    tried[#tried + 1] = route.name .. " -> TryGetOtomoActorBySlotIndex raised"
-                elseif not pal then
-                    tried[#tried + 1] = route.name .. " -> no pal in slot 0"
-                else
-                    local alive = pcall(function() return pal:IsValid() end)
-                    if alive then return pal end
-                    tried[#tried + 1] = route.name .. " -> slot 0 pal is invalid"
-                end
-            end
+            local alive, is_alive = pcall(function() return pal:IsValid() end)
+            if alive and is_alive then return pal end
+            tried[#tried + 1] = route.name .. " gave an invalid pal"
         end
     end
 
     return nil, table.concat(tried, "; ")
 end
+
 
 return players
