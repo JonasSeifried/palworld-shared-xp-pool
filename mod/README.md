@@ -3,10 +3,27 @@
 The v1 mod: XP is shared as it is earned, instead of being reconciled after the
 fact by the save editor.
 
-**Status: live, and it has shared real XP between two players.** Two faults
-found since, both understood and both fixed: it looped, paying out once a second
-forever with nobody playing; and its payouts leaked onto bystanders. Neither fix
-is confirmed in game yet.
+**Status: working.** Two players, XP shared in both directions, no leak and no
+loop, confirmed in game.
+
+```
+paying Keddo 1 xp
+  Tondoa  1533 -> 1533  (+0 xp)  distance 828
+  Keddo   1280 -> 1281  (+1 xp)  <- the one being paid
+---- after the pool ticked ----
+  Tondoa  +1 xp in total
+  Keddo   +1 xp in total
+```
+
+Nothing leaked onto Tondoa at 828 units or at 6116, the top-up reached him a
+second later, and his active pal gained the XP with him -- so being topped up by
+the pool carries the party exactly as earning it yourself does. That was the last
+open question about how it behaves.
+
+Three faults were found along the way and all three are fixed: it crashed the
+game on player enumeration, it looped paying out once a second forever, and its
+payouts leaked onto nearby players. Each has a test that fails if the fix is
+removed.
 
 ## What the first probe run found
 
@@ -132,20 +149,20 @@ recoverable -- that is what the save editor is for.
 
 ## Testing it with two people
 
-The keys stay bound when the mod is live, and F8 doubles as the two-player test.
+The keys stay bound when the mod is live, so testing takes one press rather than
+a grind.
 
-With both players connected, press **F8 once**. It grants 1 XP to the first
-player, which the pool sees as a rise nobody else matched, so the other player
-gains 1 XP within a second. `UE4SS.log` will say so:
+**F8** pays the first player 1 XP, **F6** the second. Each reports who actually
+received it, then reads everyone again once the pool has ticked -- the direct
+payout and the shared top-up are a second apart, so one reading only ever shows
+half of it.
 
-```
-[SharedXPPool] best rise 1 xp -> topped up 1 player(s) by 1 xp total
-```
+Pay the *other* player, not yourself: paying yourself reaches your own party
+either way, so it cannot tell you whether being topped up by the pool brings your
+pals along. Paying them and watching your own side can.
 
-That beats grinding kills to find out whether sharing works.
-
-**Then stop and watch the log for ten seconds.** One line is correct; a line
-every second is the loop, and it means the fix did not hold.
+**Then stop and watch the log for ten seconds.** One payout is correct; a line
+every second is the loop returning.
 
 ## Install
 

@@ -174,21 +174,6 @@ function probe.test_grant(which)
 
     local target = list[which]
 
-    -- Vanilla gives a player's active pal XP when the player earns some. Paying
-    -- a player directly clearly reaches their pal. The case that needs testing
-    -- is the other one: when somebody *else* earns and this player is topped up
-    -- by the pool, does their pal come along? Pay another player and watch this
-    -- one's pal to find out.
-    local pals, pal_before = {}, {}
-    for i, character in ipairs(list) do
-        local pal, why = players.active_pal(character)
-        pals[i] = pal
-        pal_before[i] = pal and players.exp(pal) or nil
-        if not pal then
-            log("  (no pal for " .. players.name(character) .. ": " .. tostring(why) .. ")")
-        end
-    end
-
     log("paying " .. players.name(target) .. " 1 xp")
     local ok = players.grant(target, 1)
     log("call returned: " .. tostring(ok)
@@ -215,15 +200,6 @@ function probe.test_grant(which)
         if delta and delta > 0 then moved = moved + 1 end
     end
 
-    for i, pal in pairs(pals) do
-        local pal_after = players.exp(pal)
-        local pal_delta = (pal_after and pal_before[i]) and (pal_after - pal_before[i]) or nil
-        log(string.format("  %-16s %s -> %s  (%s xp)  <- %s's pal",
-            "(pal)", tostring(pal_before[i]), tostring(pal_after),
-            pal_delta and string.format("%+d", pal_delta) or "?",
-            players.name(list[i])))
-    end
-
     if moved == 0 then
         log("PROBLEM -- nobody gained anything.")
     elseif moved == 1 then
@@ -247,14 +223,6 @@ function probe.test_grant(which)
                 log(string.format("  %-16s %s xp in total",
                     players.name(character),
                     total and string.format("%+d", total) or "?"))
-            end
-            for i, pal in pairs(pals) do
-                local now = players.exp(pal)
-                local total = (now and pal_before[i]) and (now - pal_before[i]) or nil
-                log(string.format("  %-16s %s xp in total  <- %s's pal",
-                    "(pal)",
-                    total and string.format("%+d", total) or "?",
-                    players.name(list[i])))
             end
         end)
         if not ok then
