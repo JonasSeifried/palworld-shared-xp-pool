@@ -190,25 +190,18 @@ end
 
 -- Paying a player.
 --
--- It goes through the game rather than writing the Exp field, so level-ups, the
--- UI and replication happen the way they normally do:
+-- Through the game's own function rather than by writing the Exp field, so
+-- level-ups, the UI and replication happen normally:
 --
 --   AddExpValue_forPlayerParty_Server(ExpValue: Int64,
 --                                     GiftPlayerList: Array of PalPlayerCharacter,
 --                                     isCallDelegate: Bool)
 --
--- No centre, no radius, nothing for the game to forward. That is not a
--- preference. The pool moves everybody toward the highest total, so a payout
--- that also raises a bystander moves the top every time it is approached, and
--- the mod chases it forever. Precision is a correctness requirement.
---
--- There used to be a fallback through PalUtility:GiveExpToAroundPlayerCharacter,
--- a sphere at the recipient's feet. It leaks by design -- measured in game,
--- paying one player 1 XP while another stood next to them gave the payer 2 and
--- the other 1 -- and no radius fixes that, because Palworld's own nearby-player
--- sharing forwards whatever lands in the sphere. Under the current rule it
--- would loop, so it is gone. If the named call ever fails, the mod says so and
--- shares nothing.
+-- Named recipients, no radius, nothing for the game to forward to bystanders.
+-- That is a correctness requirement, not a preference: the pool moves everybody
+-- toward the highest total, so a payout that also raises a bystander moves the
+-- top every time it is approached. The sphere-based alternative leaks by
+-- design and is not used; if this call fails, the mod shares nothing.
 
 local database = nil
 -- nil until the list-based call has been tried, then true or false for good.

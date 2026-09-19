@@ -105,13 +105,13 @@ a level -- it adds XP and the game does the rest.
 lua tests/lua/test_pool.lua
 ```
 
-Twenty-nine tests against a stubbed UE4SS. `pytest` runs them too, and skips if
+Thirty tests against a stubbed UE4SS. `pytest` runs them too, and skips if
 Lua is not installed. The ones worth having:
 
 - everybody is brought up to the highest total, and nobody is lowered
 - it settles after one gap and stays settled
 - a reading that goes backwards is ignored
-- a player is not paid on the first tick they are seen
+- a player is not paid on the first tick they are seen, and does not set the top
 - an unreadable player is skipped, and does not set the top
 - nothing is shared if the precise payout does not work
 - nothing on the read path calls `StaticFindObject`
@@ -143,8 +143,8 @@ anything is paid. Pause first, or the mod's own payouts are in the readings.
 
 `probe.lua` is a third of the mod's code and none of it runs in a normal
 session, so it is not loaded unless `debug_keys` or `probe_only` is set. Of the
-601 lines of code here, 233 are that file; the mod proper is 368, of which 184
-is reaching into Palworld through UE4SS reflection and 131 is the rule itself.
+603 lines of code here, 233 are that file; the mod proper is 370, of which 184
+is reaching into Palworld through UE4SS reflection and 128 is the rule itself.
 
 `players.lua` enumerates through `UEHelpers.GetAllPlayers`. Not
 `FindAllOf("PalPlayerState")`, which returns nothing at all on some builds --

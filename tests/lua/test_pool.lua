@@ -230,6 +230,25 @@ test("a player is not paid on the first tick they are seen", function()
     assert_equal(joiner._exp, 5000, "brought up on the next one")
 end)
 
+test("a player seen for the first time does not set the top either", function()
+    -- Stronger than "is not paid yet": an unconfirmed reading must not drag
+    -- everybody else up to it. Somebody joining a world reads before their save
+    -- has necessarily settled, and the whole world follows the highest number.
+    local state = fake.reset({ "P1", "P2" })
+    state.players[1]._exp, state.players[2]._exp = 1000, 1000
+    local pool = load_pool({ catch_up_rate = 1.0 })
+    settle(pool)
+
+    fake.add_player("Joiner", 50000, 20)
+    pool.tick()
+
+    assert_equal(state.players[1]._exp, 1000, "P1 was not pulled up by an unconfirmed reading")
+    assert_equal(state.players[2]._exp, 1000, "nor P2")
+
+    pool.tick()
+    assert_equal(state.players[1]._exp, 50000, "and follows it once it is confirmed")
+end)
+
 test("a reading that goes backwards is ignored", function()
     -- XP does not decrease in Palworld, so a smaller number is a bad read --
     -- and under this rule a bad low read looks like somebody owed everything.
