@@ -82,7 +82,7 @@ local function usable(parameter)
     return pcall(function() return parameter:GetExp() end)
 end
 
-function players.parameter(character)
+local function individual_parameter(character)
     if not (character and character:IsValid()) then return nil end
 
     if chosen then
@@ -117,7 +117,7 @@ end
 -- save stores 73,865 for a level 21 player whose level began at 68,784. That
 -- makes the difference between two readings the amount actually earned.
 function players.exp(character)
-    local parameter = players.parameter(character)
+    local parameter = individual_parameter(character)
     if not parameter then return nil end
     local ok, value = pcall(function() return parameter:GetExp() end)
     if not ok then return nil end
@@ -125,7 +125,7 @@ function players.exp(character)
 end
 
 function players.level(character)
-    local parameter = players.parameter(character)
+    local parameter = individual_parameter(character)
     if not parameter then return nil end
     local ok, value = pcall(function() return parameter:GetLevel() end)
     if not ok then return nil end

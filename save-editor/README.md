@@ -140,7 +140,7 @@ the table being wrong.
 
 ## Testing
 
-See [TESTING.md](../TESTING.md). You do not need other players -- the pool and
+See [TESTING.md](TESTING.md). You do not need other players -- the pool and
 tech logic are pure and unit-tested, and multi-player scenarios are simulated at
 the data layer.
 

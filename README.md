@@ -40,7 +40,7 @@ Full instructions, settings and the honest list of what it does not do are in
 lua mod/tests/test_pool.lua
 ```
 
-The save editor's suite is separate; see [TESTING.md](TESTING.md).
+The save editor's suite is separate; see [save-editor/](save-editor/).
 
 ## Licence
 

@@ -182,10 +182,4 @@ end
 -- Exposed for the tests, which drive ticks directly instead of waiting.
 pool.tick = tick
 
-function pool.reset()
-    last_seen = {}
-    paused, refused = false, false
-    last_unreadable = 0
-end
-
 return pool
