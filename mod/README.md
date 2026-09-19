@@ -353,22 +353,38 @@ multiplier: `CraftEXP` 2, `MapObjectDestroyProceedExp` 5,
 fire `AddExp_EnemyDeath`, not `GiveExpToAroundPlayerCharacter`, so their sharing
 is native code with nothing exposed to change.
 
-So the two approaches split the work rather than competing:
+### Why this is not the default
 
-| | handled by |
-|---|---|
-| mining, chopping, harvesting | the game itself, via `MapObjectDistributeExpRange` |
-| kills, captures, crafting, everything else | the pool, via `share_radius` |
+It works, and it is still not recommended for v1. Three reasons, in order of how
+much they matter.
 
-The first half is the better half, because the game does it with the right
-amounts and the right pal XP, and the pool then sees two equal rises and
-correctly does nothing.
+**It puts back the fragility the whole design avoids.** The pool watches totals
+rather than hooking award functions precisely so that behaviour does not depend
+on *how* the XP was earned. Widening this setting splits that: harvesting shared
+by the game, with exact amounts and the game's own pal share; everything else
+shared by the pool, with a flat fifth to pals. Two mechanisms, different
+behaviour, divided by activity.
 
-**Do not set both for the same kind of XP.** If the game hands a tree's 5 XP to
-two players a mile apart, their rises match and the pool leaves it alone --
-unless `share_radius` has decided they are too far apart to have shared, in
-which case it adds them and pays 10 for a 5 XP tree. The mod warns at startup
-when `share_radius` and a widened `MapObjectDistributeExpRange` are both set.
+**It is an alternative to `share_radius`, not a companion to it.** Setting a
+radius for kills covers map objects too, and running both double-counts: the
+game hands a tree's 5 XP to two players a mile apart, their rises match and the
+pool would leave it alone -- but `share_radius` has decided they are too far
+apart to have shared, so it adds them and pays 10 for a 5 XP tree. The mod warns
+at startup when both are set. So this setting only earns its place in the world
+where distance grouping turns out to be unusable.
+
+**The cost of a world-sized radius is unmeasured.** A million units is 10 km on a
+map about 4 km across, so every harvest becomes a world-wide query. Whether that
+is over players or over every character is not something the property name says,
+and a busy base camp is where it would show.
+
+What lowers the stakes: **nothing about it persists.** The object lives at
+`/Engine/Transient.PalGameEngine_...`, rebuilt from the Blueprint defaults every
+launch, so no value reaches the save and quitting the game undoes it.
+
+`config.game_settings` therefore stays in as a mechanism and stays empty as a
+default. It is the way to apply this or any later finding, and the fallback if
+the killer-versus-bystander measurement rules distance grouping out.
 
 **F9** lists every property with its class and value, marks plausible names with
 `***`, and finishes with just the XP-related ones on their own -- which is the

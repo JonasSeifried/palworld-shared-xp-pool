@@ -87,16 +87,26 @@ config.watch_rises = false
 
 -- Palworld's own tuning constants, written once when a world is loaded.
 --
--- These live on BP_PalGameSetting_C and are ordinary numbers. The interesting
--- one found so far is MapObjectDistributeExpRange, the distance over which XP
--- from destroying a map object is shared -- 1000 units, roughly ten metres.
--- Widening it makes the game share that XP itself, which beats the pool
--- inferring afterwards who was near enough to have received it.
---
--- Empty by default. Every write is read back and reported, and a name this
--- build does not have is skipped with a line saying so. F9 lists what exists.
+-- These live on BP_PalGameSetting_C and are ordinary numbers. Writing them
+-- works: MapObjectDistributeExpRange, the distance over which XP from
+-- destroying a map object is shared, went from 1000 to 1000000 in game and read
+-- back changed. Widening it makes the game share that XP itself.
 --
 --   config.game_settings = { MapObjectDistributeExpRange = 1000000.0 }
+--
+-- Empty anyway, and the reasoning is in the README. In short: it covers map
+-- objects and nothing else, so it makes behaviour depend on how the XP was
+-- earned -- which is the thing watching totals exists to avoid. It also
+-- overlaps share_radius rather than complementing it; setting both double-counts
+-- map object XP, and the mod says so at startup. And a 10 km radius on a 4 km
+-- map is a world-wide query per harvest, of unmeasured cost.
+--
+-- Kept because it is how any future finding of this kind gets applied, and the
+-- fallback if distance grouping turns out not to work.
+--
+-- Every write is read back and reported, and a name this build does not have is
+-- skipped with a line saying so. F9 lists what exists. Nothing persists: the
+-- object is transient and rebuilt from Blueprint defaults each launch.
 config.game_settings = {}
 
 -- How much XP the F6 and F8 test payouts hand over.
