@@ -42,11 +42,11 @@ one other person covers it.
 ## Tier 5 - the live mod
 
 `lua tests/lua/test_pool.lua` runs the mod's logic against a stubbed UE4SS: no
-game, no Palworld, no second player. It covers the sharing math, the earner
-exclusion, the duplicate filter and the re-entrancy guard.
+game, no Palworld, no second player. It covers the rule, the reading guards and
+the refusal to share through a payout that would reach bystanders.
 
-What it cannot cover is which function Palworld actually calls when XP is
-earned, and that is the one thing the whole mod rests on. So the mod ships in
-discovery mode: the first in-game run only watches and logs. See
-[mod/README.md](mod/README.md) -- that run needs one account and about two
-minutes.
+What it cannot cover is whether the game still accepts the calls. That takes one
+account and about two minutes: set `config.debug_keys = true`, then F7 to read
+your own level and XP and check them against the game, and F8 to pay yourself
+and watch the total move. Sharing itself needs a second player, since the mod
+does nothing at all with one.

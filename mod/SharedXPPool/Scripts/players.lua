@@ -190,26 +190,25 @@ end
 
 -- Paying a player.
 --
--- Both routes go through the game rather than writing the Exp field, so
--- level-ups, UI and replication happen the way they normally do.
---
--- The preferred one names its recipients outright:
+-- It goes through the game rather than writing the Exp field, so level-ups, the
+-- UI and replication happen the way they normally do:
 --
 --   AddExpValue_forPlayerParty_Server(ExpValue: Int64,
 --                                     GiftPlayerList: Array of PalPlayerCharacter,
 --                                     isCallDelegate: Bool)
 --
--- No centre, no radius, nothing for the game to forward. That matters, because
--- the radius call leaks: measured in game, paying one player 1 XP while another
--- stood next to them gave the payer 2 and the other 1, and standing apart gave
--- exactly 1 each. The sphere is not the problem -- Palworld's own nearby-player
--- sharing forwards whatever lands in it -- so no radius setting fixes it, and
--- the only real answer is not to use a sphere.
+-- No centre, no radius, nothing for the game to forward. That is not a
+-- preference. The pool moves everybody toward the highest total, so a payout
+-- that also raises a bystander moves the top every time it is approached, and
+-- the mod chases it forever. Precision is a correctness requirement.
 --
--- The radius call stays as a fallback, since it is proven to work on this build
--- and a leaky payout beats none.
-
-local GRANT_RADIUS = 50.0
+-- There used to be a fallback through PalUtility:GiveExpToAroundPlayerCharacter,
+-- a sphere at the recipient's feet. It leaks by design -- measured in game,
+-- paying one player 1 XP while another stood next to them gave the payer 2 and
+-- the other 1 -- and no radius fixes that, because Palworld's own nearby-player
+-- sharing forwards whatever lands in the sphere. Under the current rule it
+-- would loop, so it is gone. If the named call ever fails, the mod says so and
+-- shares nothing.
 
 local database = nil
 -- nil until the list-based call has been tried, then true or false for good.
@@ -248,46 +247,28 @@ local function grant_by_list(character, amount)
     return true
 end
 
-local function grant_by_sphere(character, amount)
-    local w = players.world()
-    if not w then return false end
-
-    local utility = StaticFindObject("/Script/Pal.Default__PalUtility")
-    if not (utility and utility:IsValid()) then return false end
-
-    local ok, location = pcall(function() return character:K2_GetActorLocation() end)
-    if not (ok and location) then return false end
-
-    -- The radius is not zero because the call is a sphere overlap and the
-    -- player's own capsule has to fall inside it.
-    return pcall(function()
-        utility:GiveExpToAroundPlayerCharacter(w, location, GRANT_RADIUS, amount, true)
-    end)
-end
-
 function players.grant(character, amount)
     if not (character and character:IsValid()) then return false end
     if not amount or amount <= 0 then return false end
+    if precise_works == false then return false end
 
-    if precise_works ~= false then
-        local first = (precise_works == nil)
-        if grant_by_list(character, amount) then
-            if first then
-                precise_works = true
-                print("[SharedXPPool] paying via AddExpValue_forPlayerParty_Server"
-                    .. " -- named recipients, no radius\n")
-            end
-            return true
-        end
-
+    local first = (precise_works == nil)
+    if grant_by_list(character, amount) then
         if first then
-            precise_works = false
-            print("[SharedXPPool] AddExpValue_forPlayerParty_Server did not work here;"
-                .. " falling back to the radius call, which leaks to nearby players\n")
+            precise_works = true
+            print("[SharedXPPool] paying via AddExpValue_forPlayerParty_Server"
+                .. " -- named recipients, nothing forwarded to bystanders\n")
         end
+        return true
     end
 
-    return grant_by_sphere(character, amount)
+    if first then
+        precise_works = false
+        print("[SharedXPPool] AddExpValue_forPlayerParty_Server does not work on this"
+            .. " build, and there is no safe fallback -- a payout that reaches"
+            .. " bystanders would make the pool chase a moving target\n")
+    end
+    return false
 end
 
 -- Which route is in use: true, false, or nil before anything has been paid.

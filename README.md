@@ -3,13 +3,14 @@
 One XP pool for everyone on a server. Everybody contributes, everybody benefits.
 
 **Status:** v0, the offline save editor, works end-to-end on a real save. v1,
-the live UE4SS mod, shares XP in both directions between two players in game --
-see [mod/README.md](mod/README.md).
+the live UE4SS mod, keeps every connected player at the same XP total -- see
+[mod/README.md](mod/README.md).
 
-The two are not rivals. The live mod shares XP between players who are connected
-at the time; the save editor catches up anyone who was not. Once the mod is
-running, `apply` becomes the between-sessions top-up rather than the whole
-product.
+They are the same idea at two different times. The save editor converges a world
+once, between sessions; the mod holds it converged while people play, including
+for somebody who logs in after a week away. With the mod running you mostly do
+not need `apply` any more -- it is there for worlds the mod has never seen, and
+for putting a world right by hand.
 
 ## What v0 does
 

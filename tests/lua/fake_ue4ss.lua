@@ -39,16 +39,6 @@ function fake.reset(player_names)
         precise_available = true,
         sphere_calls = 0,
         delayed = {},
-        -- Palworld's tuning constants, which the mod can write. Real names,
-        -- with the values this build reports.
-        game_setting = {
-            IsValid = function() return true end,
-            MapObjectDistributeExpRange = 1000.0,
-            MapObjectDestroyProceedExp = 5,
-            -- Stands in for a property that refuses to take a new value.
-            ReadOnlyRange = 42.0,
-        },
-        game_setting_available = true,
     }
 
     for i, name in ipairs(player_names or {}) do
@@ -106,10 +96,6 @@ function fake.param(value)
     return { get = function() return value end }
 end
 
--- Declared ahead of use: the exp database below builds properties with it, and
--- it is defined further down alongside the other reflection stand-ins.
-local make_property
-
 local utility = {
     IsValid = function() return true end,
 
@@ -154,28 +140,9 @@ local utility = {
 
 -- The list-based payout: it names its recipients, so nothing is forwarded to
 -- bystanders even when the game would otherwise share.
--- Stand-in properties for the share-radius hunt. Both names are invented for
--- the test; neither is a name observed in Palworld.
-local exp_database_properties = {
-    { name = "NearbyShareRadius", kind = "FloatProperty", value = 1500.0 },
-    { name = "ExpRateScale", kind = "FloatProperty", value = 1.0 },
-    { name = "CachedTable", kind = "StructProperty" },
-}
-
 local exp_database = {
     IsValid = function() return true end,
     GetFullName = function() return "BP_PalExpDatabase_C /Engine/Transient.fake" end,
-    NearbyShareRadius = 1500.0,
-    ExpRateScale = 1.0,
-    GetClass = function()
-        return {
-            ForEachProperty = function(_, visit)
-                for _, p in ipairs(exp_database_properties) do
-                    visit(make_property(p.name, p.kind))
-                end
-            end,
-        }
-    end,
     AddExpValue_forPlayerParty_Server = function(_, amount, gift_list, _)
         for _, character in ipairs(gift_list) do
             character._exp = character._exp + amount
@@ -214,7 +181,7 @@ local function named(text)
     return { GetFName = function() return { ToString = function() return text end } end }
 end
 
-function make_property(name, kind, extras)
+local function make_property(name, kind, extras)
     extras = extras or {}
     local property = named(name)
     property.GetClass = function() return named(kind) end
@@ -284,9 +251,6 @@ function fake.install()
         if class == "World" then return { IsValid = function() return true end } end
         if class == "PalExpDatabase" and state.precise_available then
             return exp_database
-        end
-        if class == "PalGameSetting" and state.game_setting_available then
-            return state.game_setting
         end
         return nil
     end
