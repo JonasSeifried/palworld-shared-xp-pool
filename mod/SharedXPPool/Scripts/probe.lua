@@ -215,35 +215,56 @@ end
 -- What a parameter is made of, beyond its outer kind. An ArrayProperty on its
 -- own says nothing about what belongs in the array, and that is exactly what
 -- has to be right to pay one player instead of a sphere full of them.
+--
+-- Every accessor here is gated on the property's class, and that is not
+-- tidiness. GetInner, GetPropertyClass and GetStruct each read a field that
+-- only exists on their own property type; called on anything else they read a
+-- wrong offset and take the process down. The first version asked every
+-- property for all three and killed the game on the first parameter it saw.
+-- pcall does not help -- an access violation is not a Lua error.
 local function detail(property)
-    local parts = {}
+    local kind = name_of(property:GetClass())
+    if not kind then return "" end
 
-    local ok, inner = pcall(function() return property:GetInner() end)
-    if ok and inner then
-        local kind = name_of(inner:GetClass())
-        local class = nil
-        local okc, target = pcall(function() return inner:GetPropertyClass() end)
-        if okc and target then class = name_of(target) end
-        parts[#parts + 1] = "of " .. (kind or "?") .. (class and (" -> " .. class) or "")
+    if kind == "ArrayProperty" then
+        local ok, inner = pcall(function() return property:GetInner() end)
+        if not (ok and inner) then return "  (array of ?)" end
+
+        local inner_kind = name_of(inner:GetClass()) or "?"
+        local target = nil
+        if inner_kind == "ObjectProperty" or inner_kind == "ClassProperty" then
+            local okc, class = pcall(function() return inner:GetPropertyClass() end)
+            if okc and class then target = name_of(class) end
+        elseif inner_kind == "StructProperty" then
+            local oks, struct = pcall(function() return inner:GetStruct() end)
+            if oks and struct then target = name_of(struct) end
+        end
+
+        return "  (of " .. inner_kind .. (target and (" -> " .. target) or "") .. ")"
     end
 
-    local oko, target = pcall(function() return property:GetPropertyClass() end)
-    if oko and target then
-        parts[#parts + 1] = "-> " .. (name_of(target) or "?")
+    if kind == "ObjectProperty" or kind == "ClassProperty" then
+        local ok, class = pcall(function() return property:GetPropertyClass() end)
+        if ok and class then return "  (-> " .. (name_of(class) or "?") .. ")" end
+        return ""
     end
 
-    local oks, struct = pcall(function() return property:GetStruct() end)
-    if oks and struct then
-        parts[#parts + 1] = "{" .. (name_of(struct) or "?") .. "}"
+    if kind == "StructProperty" then
+        local ok, struct = pcall(function() return property:GetStruct() end)
+        if ok and struct then return "  {" .. (name_of(struct) or "?") .. "}" end
+        return ""
     end
 
-    if #parts == 0 then return "" end
-    return "  (" .. table.concat(parts, " ") .. ")"
+    return ""
 end
 
--- What the exp-granting functions actually take. Reading a UFunction's
--- parameter list cannot crash anything, unlike calling it with guessed
--- arguments.
+-- What the exp-granting functions actually take.
+--
+-- Reading a parameter's name and class is safe. Reading what is *inside* it is
+-- not, unless the accessor matches the property type -- see detail() above,
+-- which learned that the hard way. Each parameter is logged as it is read
+-- rather than at the end, so if something here does take the game down again,
+-- the log stops on the parameter that did it.
 --
 -- The first pass already found the shape worth having:
 -- AddExpValue_forPlayerParty_Server(ExpValue: Int64, GiftPlayerList: Array,
@@ -268,23 +289,29 @@ function probe.dump_exp_api()
         if not (found and fn and fn:IsValid()) then
             log(path .. "  -- not found")
         else
-            local params = {}
+            log(path)
+
+            local count = 0
             local ok = pcall(function()
                 fn:ForEachProperty(function(property)
-                    local name = property:GetFName():ToString()
-                    local kind = property:GetClass():GetFName():ToString()
-                    params[#params + 1] = name .. ": " .. kind .. detail(property)
+                    count = count + 1
+                    local name = name_of(property) or "?"
+                    local kind = name_of(property:GetClass()) or "?"
+
+                    -- Name and kind first, on their own line, before anything
+                    -- reaches inside the property.
+                    log("    " .. count .. ". " .. name .. ": " .. kind)
+                    local inside = detail(property)
+                    if inside ~= "" then
+                        log("       " .. inside:gsub("^%s+", ""))
+                    end
                 end)
             end)
 
-            if ok then
-                log(path)
-                for i, p in ipairs(params) do
-                    log("    " .. i .. ". " .. p)
-                end
-                if #params == 0 then log("    (no parameters reported)") end
-            else
-                log(path .. "  -- could not read its parameters")
+            if not ok then
+                log("    -- stopped reading parameters after " .. count)
+            elseif count == 0 then
+                log("    (no parameters reported)")
             end
         end
     end

@@ -31,6 +31,9 @@ function fake.reset(player_names)
         -- players and the exp call is a sphere. It is the behaviour that turned
         -- the first live run into a feedback loop.
         propagate = false,
+        -- Set by make_property when a type-specific accessor is used on the
+        -- wrong property kind, which in game is a crash rather than an error.
+        unsafe_property_access = false,
     }
 
     for i, name in ipairs(player_names or {}) do
@@ -137,11 +140,80 @@ local function install_uehelpers()
     end
 end
 
+-- A reflected property, with the accessors that only exist on its own kind.
+--
+-- In game, calling GetInner on a non-array (or GetStruct on a non-struct) reads
+-- a wrong offset and kills the process -- it is not a catchable error, and it
+-- did kill it once. Here a mismatched call is recorded and raised, so a test
+-- can assert it never happened even though the code under test wraps these in
+-- pcall.
+local function named(text)
+    return { GetFName = function() return { ToString = function() return text end } end }
+end
+
+local function make_property(name, kind, extras)
+    extras = extras or {}
+    local property = named(name)
+    property.GetClass = function() return named(kind) end
+
+    local function only_for(allowed, accessor, value)
+        return function()
+            local permitted = false
+            for _, k in ipairs(allowed) do
+                if k == kind then permitted = true end
+            end
+            if not permitted then
+                state.unsafe_property_access =
+                    accessor .. " on a " .. kind .. " would crash the game"
+                error(state.unsafe_property_access)
+            end
+            return value
+        end
+    end
+
+    property.GetInner = only_for({ "ArrayProperty" }, "GetInner", extras.inner)
+    property.GetPropertyClass = only_for({ "ObjectProperty", "ClassProperty" },
+        "GetPropertyClass", extras.class)
+    property.GetStruct = only_for({ "StructProperty" }, "GetStruct", extras.struct)
+
+    return property
+end
+
+local EXP_FUNCTIONS = {
+    ["/Script/Pal.PalExpDatabase:AddExpValue_forPlayerParty_Server"] = {
+        make_property("ExpValue", "Int64Property"),
+        make_property("GiftPlayerList", "ArrayProperty", {
+            inner = make_property("Item", "ObjectProperty",
+                { class = named("PalPlayerCharacter") }),
+        }),
+        make_property("isCallDelegate", "BoolProperty"),
+    },
+    ["/Script/Pal.PalUtility:GiveExpToAroundPlayerCharacter"] = {
+        make_property("WorldContextObject", "ObjectProperty",
+            { class = named("Object") }),
+        make_property("Center", "StructProperty", { struct = named("Vector") }),
+        make_property("Radius", "FloatProperty"),
+        make_property("Exp", "FloatProperty"),
+        make_property("bCallDelegate", "BoolProperty"),
+    },
+}
+
 function fake.install()
     install_uehelpers()
 
     _G.StaticFindObject = function(path)
         if path == "/Script/Pal.Default__PalUtility" then return utility end
+
+        local properties = EXP_FUNCTIONS[path]
+        if properties then
+            return {
+                IsValid = function() return true end,
+                GetFullName = function() return "Function " .. path end,
+                ForEachProperty = function(_, visit)
+                    for _, property in ipairs(properties) do visit(property) end
+                end,
+            }
+        end
         return nil
     end
 

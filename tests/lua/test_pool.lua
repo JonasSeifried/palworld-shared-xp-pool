@@ -334,6 +334,30 @@ test("main binds every probe key", function()
     end
 end)
 
+test("reading a parameter never uses the wrong accessor for its kind", function()
+    -- F9 killed the game outright by asking every parameter for GetInner,
+    -- GetPropertyClass and GetStruct. Those read a field that only exists on
+    -- their own property type; anywhere else they read a wrong offset and the
+    -- process dies. pcall does not catch that, so the code has to check the
+    -- kind first.
+    local state = fake.reset({ "Jonas" })
+    package.loaded["probe"] = nil
+    package.loaded["players"] = nil
+    package.loaded["config"] = nil
+
+    local probe = require("probe")
+    probe.dump_exp_api()
+
+    assert_equal(state.unsafe_property_access, false, "accessor use")
+
+    -- And it still reported what the list holds, which is the whole point.
+    local found = false
+    for _, line in ipairs(state.output) do
+        if line:find("PalPlayerCharacter") then found = true end
+    end
+    assert_equal(found, true, "the array's element class was reported")
+end)
+
 test("no format string uses a numeric flag on %s", function()
     -- "%+s" raised in game and silently returned "1" here: Lua tightened
     -- format validation after 5.4.2, and UE4SS ships a newer one than this

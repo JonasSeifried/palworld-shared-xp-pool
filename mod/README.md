@@ -186,6 +186,39 @@ group then gains roughly what one player earned rather than matching the best
 earner, which is slower than vanilla rather than equal to it. It is the honest
 reading of "as if it was one player", but it is off by default.
 
+## The payout still leaks, and the replacement is known
+
+`GiveExpToAroundPlayerCharacter` takes a `Center` and a `Radius`, and Palworld's
+own nearby-player sharing forwards what lands there. Measured: standing
+together, paying one player 1 XP gave the payer 2 and the other 1; standing
+apart, exactly 1 each. So the leak is the game's sharing, not the radius, and no
+radius setting fixes it.
+
+Mostly this cancels out. If two players are close enough for a payout to leak,
+they are close enough that a kill already raised both -- their rises match and
+the top-up never fires. It only bites for XP the game does *not* share, like
+crafting, done standing next to someone.
+
+The fix is to stop using a sphere. `F9` found:
+
+```
+AddExpValue_forPlayerParty_Server
+    1. ExpValue: Int64Property
+    2. GiftPlayerList: ArrayProperty
+    3. isCallDelegate: BoolProperty
+```
+
+An explicit list of players and no radius at all. What remains is confirming
+what belongs in the list and finding a live `UPalExpDatabase` to call it on --
+both of which `F9` now reports.
+
+A warning for anyone extending the probe: reading a parameter's name and class
+is safe, but `GetInner`, `GetPropertyClass` and `GetStruct` each read a field
+that exists only on their own property type. Called on anything else they read a
+wrong offset and kill the process, and `pcall` does not catch it. Asking every
+parameter for all three crashed the game on the first one. A test now fails if
+the code does that again.
+
 ## Not yet: closing a gap that already exists
 
 The top-up equalises how fast people gain, not how much they have. Everyone
