@@ -218,8 +218,14 @@ anywhere else. Logs go to `<game>\Pal\Binaries\Win64\ue4ss\UE4SS.log`.
 
 ## Balance
 
-Every tick, whoever gained the most sets the mark, and everybody else is brought
-up to it. Nobody is ever pulled down, and nobody is pushed past the best earner.
+Every tick, whoever gained the most sets the mark, and that rise times the
+number of players is the budget. Nobody is ever pulled down, and nobody is ever
+raised above the player in front.
+
+Where the budget goes depends on whether anyone is behind. When everybody is
+level it can only bring each player up to the best earner, so the group gains
+exactly what it gains today. When somebody is behind, it goes to them first --
+see below.
 
 That is not a multiplier. Palworld already gives full XP to every player
 standing nearby, so a group playing together shares nothing today -- and the
@@ -268,31 +274,53 @@ wrong offset and kill the process, and `pcall` does not catch it. Asking every
 parameter for all three crashed the game on the first one. A test now fails if
 the code does that again.
 
-## Not yet: closing a gap that already exists
+## Closing a gap that already exists
 
-The top-up equalises how fast people gain, not how much they have. Everyone
-moves in lockstep from wherever they started, so a player who was four levels
-behind on the day the mod went in stays four levels behind.
+Topping everyone up to the best rise equalises how fast people gain, not how
+much they have. On its own it moves everybody in lockstep from wherever they
+started, so a player four levels behind on the day the mod goes in stays four
+levels behind. `config.catch_up` fixes that, and it is on.
 
-Until that changes, the fix is the save editor. `sharedxp apply` converges
-everyone to the mean once, between sessions, and after that the live mod keeps
-them level. Run it before the first session on an existing world.
+Two changes, and the second is what makes the first work.
 
-When it is worth doing live -- mainly for someone joining an established world
-with a fresh character -- the shape is already clear, and it costs nothing in
-balance:
+**The budget goes to the lowest totals first.** Not each player's own shortfall
+-- the water fills the deepest valley until it reaches the next one, then both
+rise together. Somebody four levels down is simply the deepest valley, so they
+are served first and there is no ratio to tune. It is also why a player who is
+only slightly behind is not overpaid.
 
-Each tick the mod injects a known amount of XP: the sum of `best - rise` across
-everyone behind. Keep that budget exactly as it is, but distribute it by who is
-furthest behind *in total XP* rather than giving each player precisely their own
-shortfall. The player who is ahead on totals receives less than their rate
-shortfall, the one furthest behind receives more, and the sum injected is
-unchanged. Gaps close on their own, nobody is ever lowered, and the group gains
-not one point more than it does today.
+**The earner's own gain is mirrored, not just matched.** Without this a group
+where only the player in front is playing can never close: everyone rises by the
+same 20 and the gap is preserved exactly. With it the budget is the rise times
+the number of players, so the people behind gain faster than the one in front.
+The earner keeps what the game gave them -- nothing is taken from anybody -- and
+receives nothing from the pool while they are the one ahead.
 
-Deliberately not built yet. The loop fix above is confirmed in tests but not in
-game, and adding a second way to inject XP before the first one is proven means
-the next surprise has two possible causes instead of one.
+**Nobody is raised above the player in front**, and that cap is what makes the
+whole thing safe to leave on. Once everyone is level there is nowhere left to put
+the mirrored share, so it is simply not paid:
+
+```
+gap present   P3 earns 20 -> P1 +60, P2 +0, P3 +0    (group gains 80)
+converged     P3 earns 20 -> P1 +20, P2 +20, P3 +0   (group gains 60, as before)
+```
+
+The extra XP exists only while there is a gap to close. A group already playing
+together gains exactly what it does with `catch_up` off. In tests a spread of
+11,000 XP across three players closes to zero and then holds, with every player
+gaining exactly the earner's rate from that point on.
+
+`config.divide_among_players` skips the mirrored share, because there the point
+is that the group gains what one player earned and mirroring would double it.
+The lowest-first allocation still applies.
+
+Two players is no longer the dead case it was in the first design: a fixed budget
+split between two people gives them the same rise however it is split, so only
+the mirrored share can close it.
+
+The save editor is still worth one run before the first session -- `sharedxp
+apply --mode max` converges everyone immediately rather than over an evening --
+but it is no longer the only way to close a gap.
 
 ## Scope
 
@@ -329,7 +357,7 @@ worked.
 lua tests/lua/test_pool.lua
 ```
 
-Twenty-eight tests against a stubbed UE4SS. The fake models what the game actually
+Thirty-three tests against a stubbed UE4SS. The fake models what the game actually
 does, which is the part that matters: a payout really moves the number, and in
 `propagate` mode it moves *everyone's*, the way paying one player raised the
 other in game.
@@ -344,6 +372,9 @@ The ones worth having:
 - an impossible rise is ignored rather than shared
 - pausing stops payouts, and resuming pays no backlog
 - a live session binds nothing that injects XP
+- the budget goes to whoever is furthest behind
+- nobody is ever raised above the player in front
+- a gap closes, and then the pool goes back to keeping pace
 
 Each was checked by breaking the code it defends and watching it go red. The
 first one only exists because removing the re-read broke nothing in the suite --

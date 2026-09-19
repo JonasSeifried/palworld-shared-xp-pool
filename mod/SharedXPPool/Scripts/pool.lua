@@ -32,6 +32,13 @@
 -- missed is rebaselined on their next reading rather than counted, the same way
 -- somebody who just joined is.
 --
+-- On top of those three, config.catch_up decides where a tick's budget goes.
+-- The budget is the same either way -- the best rise times the number of
+-- players -- but paying each player their own shortfall preserves whatever gap
+-- people started with, while filling the lowest totals first closes it. Capped
+-- so nobody passes the player in front, which is what makes the second one
+-- switch itself off when everybody is already level.
+--
 -- Between them the rules make a feedback loop structurally impossible.
 -- Sharing can only ever level players up to the best earner, never past them,
 -- and a tick where everyone is already level produces no payment at all.
@@ -76,6 +83,66 @@ local function rebaseline(connected, keys, totals)
             end
         end
     end
+end
+
+-- Who gets the budget, when catching up is on.
+--
+-- Raise the lowest total first until it meets the next lowest, then raise both
+-- together, and so on -- filling valleys rather than handing each player their
+-- own shortfall. That is what closes a gap instead of preserving it, and it is
+-- also the level weighting: somebody four levels down is simply the deepest
+-- valley, so the water reaches them first. No ratio to pick.
+--
+-- The water level never rises above `ceiling`, the highest total anybody has.
+-- Nobody overtakes the player in front, and once everyone is level there is
+-- nowhere left to put the money -- which is exactly how the extra XP switches
+-- itself off when there is no gap to close.
+--
+-- Returns index -> amount, over the entries given.
+local function water_fill(entries, budget, ceiling)
+    table.sort(entries, function(a, b) return a.total < b.total end)
+
+    local n = #entries
+    local level = entries[1].total
+    local remaining = budget
+
+    for i = 1, n do
+        local next_level = (i < n) and entries[i + 1].total or ceiling
+        if next_level > ceiling then next_level = ceiling end
+
+        if next_level > level then
+            -- Raising the i players at or below the line costs this much.
+            local cost = i * (next_level - level)
+            if remaining >= cost then
+                remaining = remaining - cost
+                level = next_level
+            else
+                local step = remaining // i
+                level = level + step
+                remaining = remaining - step * i
+                break
+            end
+        end
+    end
+
+    local allocation = {}
+    for _, entry in ipairs(entries) do
+        local owed = level - entry.total
+        allocation[entry.index] = owed > 0 and owed or 0
+    end
+
+    -- XP is whole numbers, so a budget that does not divide evenly leaves a few
+    -- units over. Dropping them every second adds up, so they go to the lowest
+    -- totals -- one each, in order, which is all that can be left.
+    for _, entry in ipairs(entries) do
+        if remaining <= 0 then break end
+        if entry.total + allocation[entry.index] < ceiling then
+            allocation[entry.index] = allocation[entry.index] + 1
+            remaining = remaining - 1
+        end
+    end
+
+    return allocation
 end
 
 local function tick()
@@ -158,11 +225,57 @@ local function tick()
     end
     target = math.floor(target)
 
+    -- What to pay whom. Both routes hand out the same budget -- the group's
+    -- income is the best earner's rate times the number of players either way.
+    -- They differ only in where it goes: to each player's own rate shortfall,
+    -- which keeps an existing gap exactly as it was, or to the lowest totals
+    -- first, which closes it.
+    local owings = {}
+
+    if config.catch_up then
+        local entries, ceiling, budget = {}, nil, 0
+
+        for i = 1, #connected do
+            if keys[i] and totals[i] then
+                entries[#entries + 1] = { index = i, total = totals[i] }
+                if not ceiling or totals[i] > ceiling then ceiling = totals[i] end
+            end
+            local rise = rises[i]
+            if rise and rise < target then budget = budget + (target - rise) end
+        end
+
+        -- The earner's own gain is mirrored too, not just matched. Without that
+        -- term a group where only the player in front is playing can never
+        -- close: everybody rises by the same amount and the gap is preserved
+        -- exactly. With it the budget is the full rise times the number of
+        -- players, which is what lets the people behind gain faster than the
+        -- one in front.
+        --
+        -- It costs nothing when there is no gap, because the ceiling leaves
+        -- nowhere to put it and water_fill simply does not pay it out.
+        --
+        -- Not in divide mode: there the whole idea is that the group gains what
+        -- one player earned, and mirroring a share would double it.
+        if not config.divide_among_players then
+            budget = budget + target
+        end
+
+        if #entries > 0 and budget > 0 then
+            owings = water_fill(entries, budget, ceiling)
+        end
+    else
+        for i = 1, #connected do
+            local rise = rises[i]
+            if rise and rise < target then
+                owings[i] = target - rise
+            end
+        end
+    end
+
     local paid, given = 0, 0
     for i = 1, #connected do
-        local rise = rises[i]
-        if rise and rise < target then
-            local owed = target - rise
+        local owed = owings[i]
+        if owed and owed > 0 then
             if players.grant(connected[i], owed) then
                 paid = paid + 1
                 given = given + owed

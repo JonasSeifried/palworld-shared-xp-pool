@@ -3,8 +3,8 @@
 One XP pool for everyone on a server. Everybody contributes, everybody benefits.
 
 **Status:** v0, the offline save editor, works end-to-end on a real save. v1,
-the live UE4SS mod, is written and unit-tested but has not run inside Palworld
-yet -- see [mod/README.md](mod/README.md).
+the live UE4SS mod, shares XP in both directions between two players in game --
+see [mod/README.md](mod/README.md).
 
 The two are not rivals. The live mod shares XP between players who are connected
 at the time; the save editor catches up anyone who was not. Once the mod is
