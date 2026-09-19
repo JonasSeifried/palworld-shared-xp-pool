@@ -3,10 +3,9 @@
 The v1 mod: XP is shared as it is earned, instead of being reconciled after the
 fact by the save editor.
 
-**Status: live, untested with two players.** Both halves are proven in game --
-the mod can read every player's XP and pay XP to a chosen player -- and sharing
-is switched on. What has not happened yet is two people in one world watching XP
-actually move between them.
+**Status: live, and it has shared real XP between two players.** It also looped
+the first time, paying out once a second forever with nobody playing. The cause
+and the fix are below. The fix is not yet confirmed in game.
 
 ## What the first probe run found
 
@@ -81,6 +80,53 @@ hook the probe had registered. Under the old hook-based design that would have
 been a feedback loop to defend against. Watching totals instead means it is
 simply not a question.
 
+## What the first two-player run found
+
+It worked, and then it looped.
+
+The working part: XP moved between the two players, and not only from kills.
+One player discovering a fast travel altar was picked up and shared like
+anything else -- through a code path the probe never hooked and I never
+identified. That is the total-watching design earning its keep.
+
+The loop: with nobody playing, the log filled with one payout per second at a
+constant amount, forever.
+
+```
+18:12:44  Tondoa earned 10 xp -> shared to 1 player(s)
+18:12:45  Tondoa earned 10 xp -> shared to 1 player(s)
+18:12:46  Tondoa earned 10 xp -> shared to 1 player(s)
+```
+
+**Paying one player raised the other too.** Either the 50-unit sphere reached
+them, or -- more likely -- Palworld's own nearby-player sharing propagated the
+payout. The mod credited only the intended recipient, so the other player's rise
+looked like earnings, which it mirrored, which raised the first player again.
+
+The mistake was assuming a grant lands on exactly one player. It does not, and
+no radius makes that reliably true, because the game may forward it regardless.
+Two rules now make the feedback path impossible:
+
+**Top up to the best rise, never add to it.** Palworld already gives full XP to
+players standing together, so if both rose 10 this tick the game has already
+done the sharing and there is nothing to do. The target is the largest rise
+anyone saw; only players below it get the difference. Summing instead would
+double every shared kill -- and it is what let the loop grow.
+
+**Re-read everyone after paying.** Whatever the payout touched, and whoever it
+reached, is absorbed into the new baseline instead of being counted as earnings
+next tick. Without this the recipient's gain reads as *their* earning, making the
+original earner the one who is behind, and the two trade payments back and forth
+forever -- no propagation required, purely the mod's own accounting.
+
+Both rules have a test that fails when the rule is removed. I checked by
+removing each one.
+
+A consequence worth knowing: a player whose XP cannot be read is now skipped
+rather than paid. Without a reading there is no way to know what they already
+gained, and guessing high is precisely what caused the loop. Falling behind is
+recoverable -- that is what the save editor is for.
+
 ## Testing it with two people
 
 The keys stay bound when the mod is live, and F8 doubles as the two-player test.
@@ -121,17 +167,20 @@ anywhere else. Logs go to `<game>\Pal\Binaries\Win64\ue4ss\UE4SS.log`.
 
 ## Balance
 
-When one player earns XP, every other connected player gets the same amount.
+Every tick, whoever gained the most sets the mark, and everybody else is brought
+up to it. Nobody is ever pulled down, and nobody is pushed past the best earner.
 
 That is not a multiplier. Palworld already gives full XP to every player
-standing nearby, so a group playing together shares nothing today. This removes
-the distance limit, so a group that splits up progresses like a group that
-sticks together. Nobody falls behind for going off to do their own thing.
+standing nearby, so a group playing together shares nothing today -- and the
+top-up rule correctly does nothing in that case, because they all rose together.
+What it removes is the distance limit, so a group that splits up progresses like
+a group that sticks together. Nobody falls behind for going off to do their own
+thing.
 
-`config.divide_among_players` switches to `X / N` each instead. That makes the
-whole group progress at one solo player's rate, which is slower than vanilla
-rather than equal to it. It is the honest reading of "as if it was one player",
-but it is off by default.
+`config.divide_among_players` targets the average rise instead of the best. The
+group then gains roughly what one player earned rather than matching the best
+earner, which is slower than vanilla rather than equal to it. It is the honest
+reading of "as if it was one player", but it is off by default.
 
 ## Scope
 
@@ -167,15 +216,20 @@ build-dependent, and remembers the one that worked.
 lua tests/lua/test_pool.lua
 ```
 
-Twelve tests against a stubbed UE4SS: the baseline tick, mirroring, splitting,
-late joiners, unreadable players, identity tracking, and the accessor
-fall-through.
+Sixteen tests against a stubbed UE4SS. The fake models what the game actually
+does, which is the part that matters: a payout really moves the number, and in
+`propagate` mode it moves *everyone's*, the way paying one player raised the
+other in game.
 
-Three of them earn their keep. Grants really move the number in the fake, so a
-payout comes back round on the next reading exactly as it would in game --
-without the bookkeeping that discounts it, XP compounds forever and two tests
-fail. The third fails the moment anything on the read path calls
-`StaticFindObject`, which is what crashed the game. All three were checked by
-breaking the code and watching them go red.
+Four of them are the ones worth having:
+
+- a single earning settles after one payout and stays settled
+- a payout that leaks onto the earner does not start a loop
+- players the game already paid are not paid again
+- nothing on the read path calls `StaticFindObject`
+
+Each was checked by breaking the code it defends and watching it go red. The
+first one only exists because removing the re-read broke nothing in the suite --
+the rule looked unnecessary until there was a test that could tell.
 
 `pytest` runs the suite too, and skips if Lua is not installed.

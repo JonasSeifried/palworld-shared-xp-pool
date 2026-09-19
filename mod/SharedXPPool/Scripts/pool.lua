@@ -1,61 +1,69 @@
--- The shared pool: when one player earns XP, give it to everyone else.
+-- The shared pool: nobody falls behind the best earner.
 --
--- This watches each player's total XP and reacts to it changing, rather than
--- hooking whatever function awarded it. That is a deliberate choice, and the
--- probe run is why.
+-- This watches each player's XP total and reacts to it changing, rather than
+-- hooking whatever function awarded it. Palworld computes XP inside the game --
+-- a kill arrives as AddExp_EnemyDeath carrying a PalDeadInfo and no amount --
+-- so the award is not readable from a hook. The difference between two
+-- readings is, and it covers every source at once: kills, crafting, building,
+-- capture bonuses, and anything a future patch adds.
 --
--- Palworld awards XP through several entry points on UPalExpDatabase, and a
--- kill goes through AddExp_EnemyDeath, whose only argument is a PalDeadInfo of
--- {LastDamage, LastAttacker, selfActor}. The amount is computed inside, and
--- never appears in the arguments. Crafting and building come in through
--- different functions again. Hooking each one would mean deriving the game's
--- own XP formula from the dead pal, correctly, for every source -- and getting
--- it wrong would silently pay out the wrong number.
+-- Two rules follow from what the game actually does, both learned the hard way.
 --
--- Watching the total sidesteps all of it. Whatever the game decided a player
--- earned, and for whatever reason, the difference between two readings is
--- exactly that amount.
+-- **Top up to the best rise, do not add to it.** Palworld already gives full XP
+-- to players standing near each other. If two players both rose 10 this tick,
+-- the game has already shared it and there is nothing to do; paying them 10
+-- more would double a kill. So the target is the largest rise anyone saw, and
+-- only players below it get the difference.
 --
--- Scope is deliberately narrow: only players who are currently connected. A
--- player who is offline has no loaded save for the mod to reach, and catching
--- them up is the save editor's job.
+-- **Rebaseline after paying.** A payout does not land on one player. Granting
+-- to one raised the other too -- Palworld's own nearby sharing propagates it,
+-- and the exp call is a sphere in the first place. Crediting only the intended
+-- recipient left the other's rise looking earned, which mirrored it, forever:
+-- a steady 10 xp per second per player with nobody playing. So after paying,
+-- read everyone again and take that as the new baseline. Whatever the payout
+-- touched, and whoever it reached, is absorbed rather than counted as
+-- earnings.
+--
+-- Between them the two rules make a feedback loop structurally impossible.
+-- Sharing can only ever level players up to the best earner, never past them,
+-- and a tick where everyone is already level produces no payment at all.
+--
+-- Scope: only players currently connected. Someone offline has no loaded save
+-- to reach, and catching them up is the save editor's job.
 
 local config = require("config")
 local players = require("players")
 
 local pool = {}
 
--- Per player: the last total we saw, and how much of any future rise is XP we
--- handed out ourselves rather than XP they earned.
+-- key -> { exp = <last total we saw> }
 local watched = {}
 
 local running = false
+local last_unreadable = 0
 
-local function share(earner_key, amount, connected, keys)
-    local per_player = amount * config.share_rate
-    if config.divide_among_players then
-        per_player = per_player / #connected
-    end
-    per_player = math.floor(per_player)
-    if per_player <= 0 then return 0 end
-
-    local recipients = 0
-
+local function read_totals(connected, keys)
+    local totals = {}
     for i, character in ipairs(connected) do
-        if keys[i] ~= earner_key then
-            if players.grant(character, per_player) then
-                -- Remember what we gave, so the next reading does not mistake
-                -- our own payout for XP they earned and mirror it again.
-                local state = watched[keys[i]]
-                if state then
-                    state.owed = state.owed + per_player
-                end
-                recipients = recipients + 1
+        if keys[i] then
+            totals[i] = players.exp(character)
+        end
+    end
+    return totals
+end
+
+local function rebaseline(connected, keys, totals)
+    for i = 1, #connected do
+        local key, total = keys[i], totals[i]
+        if key and total then
+            local state = watched[key]
+            if state then
+                state.exp = total
+            else
+                watched[key] = { exp = total }
             end
         end
     end
-
-    return recipients
 end
 
 local function tick()
@@ -67,46 +75,81 @@ local function tick()
         keys[i] = players.key(character)
     end
 
-    -- Read everyone first. Sharing as we go would let one player's payout land
-    -- before we had read the next player's total, which then looks earned.
-    local earned = {}
-    for i, character in ipairs(connected) do
-        local key = keys[i]
-        local total = key and players.exp(character)
+    local totals = read_totals(connected, keys)
 
-        if total then
+    -- How much each player gained since the last look. A player we have not
+    -- seen before gets a baseline and sits this tick out: their existing XP is
+    -- not something they just earned.
+    local rises = {}
+    local best, sum, counted, unreadable = 0, 0, 0, 0
+
+    for i = 1, #connected do
+        local key, total = keys[i], totals[i]
+        if key and total then
             local state = watched[key]
-            if not state then
-                -- First sight. Establish a baseline and share nothing: their
-                -- existing XP is not something they just earned.
-                watched[key] = { exp = total, owed = 0 }
-            else
+            if state then
                 local rise = total - state.exp
-                state.exp = total
+                if rise < 0 then rise = 0 end  -- a fresh character, or a reset
+                rises[i] = rise
+                if rise > best then best = rise end
+                sum = sum + rise
+                counted = counted + 1
+            end
+        else
+            unreadable = unreadable + 1
+        end
+    end
 
-                if rise > 0 then
-                    -- Discount our own payouts first.
-                    local ours = math.min(rise, state.owed)
-                    state.owed = state.owed - ours
-                    local really_earned = rise - ours
+    -- A player we cannot read gets nothing, rather than the full target. We do
+    -- not know what they already gained, so paying them would be a guess -- and
+    -- guessing high is exactly what turned the first live run into a loop.
+    -- Falling behind is recoverable; the save editor tops them up later.
+    if unreadable > 0 and unreadable ~= last_unreadable then
+        print(string.format(
+            "[SharedXPPool] %d player(s) unreadable, skipping them until that changes\n",
+            unreadable))
+    end
+    last_unreadable = unreadable
 
-                    if really_earned > 0 then
-                        earned[#earned + 1] = { key = key, amount = really_earned, index = i }
-                    end
-                end
+    if #connected < 2 or best <= 0 or counted == 0 then
+        rebaseline(connected, keys, totals)
+        return
+    end
+
+    -- Everyone should end this tick having gained as much as the best earner.
+    local target = best * config.share_rate
+    if config.divide_among_players then
+        target = (sum * config.share_rate) / counted
+    end
+    target = math.floor(target)
+
+    local paid, given = 0, 0
+    for i = 1, #connected do
+        local rise = rises[i]
+        if rise and rise < target then
+            local owed = target - rise
+            if players.grant(connected[i], owed) then
+                paid = paid + 1
+                given = given + owed
             end
         end
     end
 
-    if #connected < 2 then return end
+    if paid > 0 then
+        -- Read again rather than assuming where the XP landed.
+        local after = read_totals(connected, keys)
+        for i = 1, #connected do
+            if after[i] then totals[i] = after[i] end
+        end
 
-    for _, event in ipairs(earned) do
-        local recipients = share(event.key, event.amount, connected, keys)
-        if config.verbose and recipients > 0 then
-            print(string.format("[SharedXPPool] %s earned %d xp -> shared to %d player(s)\n",
-                players.name(connected[event.index]), event.amount, recipients))
+        if config.verbose then
+            print(string.format(
+                "[SharedXPPool] best rise %d xp -> topped up %d player(s) by %d xp total\n",
+                best, paid, given))
         end
     end
+
+    rebaseline(connected, keys, totals)
 end
 
 local function schedule()

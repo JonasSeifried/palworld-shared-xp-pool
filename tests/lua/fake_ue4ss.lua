@@ -25,6 +25,12 @@ function fake.reset(player_names)
         hooks = {},
         keybinds = {},   -- key -> handler
         output = {},
+        -- When set, a grant raises every player, not just the one standing at
+        -- the target point. This is what the game actually does: paying one
+        -- player raised the other too, because Palworld shares XP with nearby
+        -- players and the exp call is a sphere. It is the behaviour that turned
+        -- the first live run into a feedback loop.
+        propagate = false,
     }
 
     for i, name in ipairs(player_names or {}) do
@@ -90,15 +96,25 @@ local utility = {
     -- round on the next reading exactly as they would in game. Without that,
     -- the bookkeeping that stops a payout being mirrored again is untested.
     GiveExpToAroundPlayerCharacter = function(_, _, location, radius, amount, _)
+        local target = nil
         for _, p in ipairs(state.players) do
             local at = p:K2_GetActorLocation()
             if at.X == location.X and at.Y == location.Y and at.Z == location.Z then
-                p._exp = p._exp + amount
-                state.grants[#state.grants + 1] = { character = p, amount = amount }
-                return
+                target = p
+                break
             end
         end
-        error("GiveExpToAroundPlayerCharacter: nobody at that location")
+        if not target then
+            error("GiveExpToAroundPlayerCharacter: nobody at that location")
+        end
+
+        state.grants[#state.grants + 1] = { character = target, amount = amount }
+
+        for _, p in ipairs(state.players) do
+            if p == target or state.propagate then
+                p._exp = p._exp + amount
+            end
+        end
     end,
 }
 
