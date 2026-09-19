@@ -5,12 +5,8 @@ package.path = "tests/lua/?.lua;mod/SharedXPPool/Scripts/?.lua;" .. package.path
 local fake = require("fake_ue4ss")
 local real_print = print
 
-local SOURCE = "/Script/Pal.PalExpDatabase:AddExpValue_forPlayerParty_Server"
-
 local passed, failed = 0, 0
 
--- Load pool.lua fresh each time so config changes take effect and the module's
--- dedup timestamps do not leak between cases.
 local function load_pool(overrides)
     package.loaded["pool"] = nil
     package.loaded["players"] = nil
@@ -20,9 +16,7 @@ local function load_pool(overrides)
     for k, v in pairs(overrides or {}) do config[k] = v end
     config.verbose = false
 
-    local pool = require("pool")
-    pool.start()
-    return pool
+    return require("pool")
 end
 
 local function test(name, body)
@@ -37,14 +31,6 @@ local function test(name, body)
     end
 end
 
-local function grants_by_name(state)
-    local out = {}
-    for _, g in ipairs(state.grants) do
-        out[g.character._name] = (out[g.character._name] or 0) + g.amount
-    end
-    return out
-end
-
 local function assert_equal(actual, expected, what)
     if actual ~= expected then
         error(string.format("%s: expected %s, got %s",
@@ -52,120 +38,167 @@ local function assert_equal(actual, expected, what)
     end
 end
 
+local function exp_by_name(state)
+    local out = {}
+    for _, p in ipairs(state.players) do out[p._name] = p._exp end
+    return out
+end
+
 real_print("shared xp pool -- live mod")
 
-test("an earner's xp is mirrored to everyone else at full value", function()
+test("the first tick only takes a baseline", function()
+    local state = fake.reset({ "Jonas", "Keddo" })
+    state.players[1]._exp = 5000
+    local pool = load_pool()
+
+    pool.tick()
+
+    -- Existing XP is not something they just earned.
+    assert_equal(#state.grants, 0, "grant count")
+    assert_equal(state.players[2]._exp, 0, "Keddo untouched")
+end)
+
+test("xp earned after the baseline is mirrored to everyone else", function()
     local state = fake.reset({ "Jonas", "Keddo", "HenBot" })
-    load_pool()
+    local pool = load_pool()
 
-    fake.fire(SOURCE, state.players[1], 100)
+    pool.tick()
+    state.players[1]._exp = state.players[1]._exp + 100
+    pool.tick()
 
-    local got = grants_by_name(state)
-    assert_equal(#state.grants, 2, "grant count")
+    local got = exp_by_name(state)
     assert_equal(got["Keddo"], 100, "Keddo")
     assert_equal(got["HenBot"], 100, "HenBot")
-    assert_equal(got["Jonas"], nil, "the earner is not paid twice")
+    assert_equal(got["Jonas"], 100, "the earner keeps exactly what they earned")
+end)
+
+test("a payout is not mistaken for earnings and mirrored again", function()
+    -- The whole design rests on this. Grants really move the number in the
+    -- fake, so without the bookkeeping each tick would re-share the last
+    -- tick's payout and XP would compound forever.
+    local state = fake.reset({ "Jonas", "Keddo", "HenBot" })
+    local pool = load_pool()
+
+    pool.tick()
+    state.players[1]._exp = state.players[1]._exp + 100
+    for _ = 1, 6 do pool.tick() end
+
+    local got = exp_by_name(state)
+    assert_equal(got["Jonas"], 100, "Jonas")
+    assert_equal(got["Keddo"], 100, "Keddo")
+    assert_equal(got["HenBot"], 100, "HenBot")
+    assert_equal(#state.grants, 2, "one payout each, once")
+end)
+
+test("everyone earning at once settles without compounding", function()
+    local state = fake.reset({ "Jonas", "Keddo" })
+    local pool = load_pool()
+
+    pool.tick()
+    state.players[1]._exp = state.players[1]._exp + 100
+    state.players[2]._exp = state.players[2]._exp + 40
+    for _ = 1, 6 do pool.tick() end
+
+    local got = exp_by_name(state)
+    -- Each earned their own and received the other's.
+    assert_equal(got["Jonas"], 140, "Jonas")
+    assert_equal(got["Keddo"], 140, "Keddo")
 end)
 
 test("divide_among_players splits instead of mirroring", function()
     local state = fake.reset({ "Jonas", "Keddo", "HenBot" })
-    load_pool({ divide_among_players = true })
+    local pool = load_pool({ divide_among_players = true })
 
-    fake.fire(SOURCE, state.players[1], 100)
+    pool.tick()
+    state.players[1]._exp = state.players[1]._exp + 100
+    pool.tick()
 
-    local got = grants_by_name(state)
-    -- floor(100/3) = 33, so the group gains 66 on top of the earner's own 100
-    -- rather than 200.
+    local got = exp_by_name(state)
+    -- floor(100/3) = 33 each, so the group gains 66 on top of the earner's
+    -- 100 rather than 200.
     assert_equal(got["Keddo"], 33, "Keddo")
     assert_equal(got["HenBot"], 33, "HenBot")
 end)
 
 test("a solo player shares with nobody", function()
     local state = fake.reset({ "Jonas" })
-    load_pool()
+    local pool = load_pool()
 
-    fake.fire(SOURCE, state.players[1], 100)
-
-    assert_equal(#state.grants, 0, "grant count")
-end)
-
-test("the same amount twice in an instant counts once", function()
-    local state = fake.reset({ "Jonas", "Keddo" })
-    load_pool()
-
-    fake.fire(SOURCE, state.players[1], 100)
-    fake.fire(SOURCE, state.players[1], 100)
-
-    assert_equal(#state.grants, 1, "grant count")
-end)
-
-test("different amounts in an instant both count", function()
-    local state = fake.reset({ "Jonas", "Keddo" })
-    load_pool()
-
-    fake.fire(SOURCE, state.players[1], 100)
-    fake.fire(SOURCE, state.players[1], 250)
-
-    assert_equal(#state.grants, 2, "grant count")
-end)
-
-test("our own grants do not feed back into the hook", function()
-    local state = fake.reset({ "Jonas", "Keddo", "HenBot" })
-    load_pool()
-
-    -- Every payout now re-enters the hook, which is what happens if the game's
-    -- own exp call routes back through the server function we hooked. Without
-    -- the guard this does not terminate.
-    state.reentrant = true
-
-    fake.fire(SOURCE, state.players[1], 100)
-
-    assert_equal(#state.grants, 2, "only the outer event paid out")
-end)
-
-test("argument order does not matter", function()
-    local state = fake.reset({ "Jonas", "Keddo" })
-    load_pool()
-
-    -- Amount first, earner second -- the reverse of what we expect.
-    fake.fire(SOURCE, 100, state.players[1])
-
-    local got = grants_by_name(state)
-    assert_equal(got["Keddo"], 100, "Keddo")
-    assert_equal(got["Jonas"], nil, "the earner is still recognised")
-end)
-
-test("extra arguments are ignored", function()
-    local state = fake.reset({ "Jonas", "Keddo" })
-    load_pool()
-
-    fake.fire(SOURCE, state.players[1], 100, true, "Craft")
-
-    assert_equal(#state.grants, 1, "grant count")
-    assert_equal(state.grants[1].amount, 100, "amount")
-end)
-
-test("a hook with no amount in it is reported, not silently dropped", function()
-    local state = fake.reset({ "Jonas", "Keddo" })
-    load_pool()
-
-    fake.fire(SOURCE, state.players[1], true)
+    pool.tick()
+    state.players[1]._exp = state.players[1]._exp + 100
+    pool.tick()
 
     assert_equal(#state.grants, 0, "grant count")
-    local complained = false
-    for _, line in ipairs(state.output) do
-        if line:find("no amount found") then complained = true end
-    end
-    assert_equal(complained, true, "the log explains why nothing happened")
+end)
+
+test("someone joining later gets a baseline, not a windfall", function()
+    local state = fake.reset({ "Jonas" })
+    local pool = load_pool()
+
+    pool.tick()
+    state.players[1]._exp = state.players[1]._exp + 100
+    pool.tick()
+
+    -- Keddo arrives already carrying XP from elsewhere.
+    local keddo = fake.add_player("Keddo", 9999, 20)
+    pool.tick()
+    assert_equal(#state.grants, 0, "nothing shared on the tick they appear")
+
+    state.players[1]._exp = state.players[1]._exp + 50
+    pool.tick()
+    assert_equal(keddo._exp, 10049, "Keddo receives only what was earned after they joined")
 end)
 
 test("share_rate = 0 turns sharing off", function()
     local state = fake.reset({ "Jonas", "Keddo" })
-    load_pool({ share_rate = 0 })
+    local pool = load_pool({ share_rate = 0 })
 
-    fake.fire(SOURCE, state.players[1], 100)
+    pool.tick()
+    state.players[1]._exp = state.players[1]._exp + 100
+    pool.tick()
 
     assert_equal(#state.grants, 0, "grant count")
+end)
+
+test("xp is found through a fall-back accessor", function()
+    -- The fake only implements the second of the four ways to reach a
+    -- character's parameter, so this passing means the chain works.
+    local state = fake.reset({ "Jonas", "Keddo" })
+    load_pool()
+    local players = require("players")
+
+    assert_equal(players.exp(state.players[1]), 0, "xp readable")
+    assert_equal(players.access_path(),
+        "character:GetCharacterParameterComponent():GetIndividualParameter()",
+        "accessor in use")
+end)
+
+test("a player whose xp cannot be read is skipped, not crashed on", function()
+    local state = fake.reset({ "Jonas", "Keddo" })
+    local pool = load_pool()
+    pool.tick()
+
+    state.players[2].GetCharacterParameterComponent = function() error("gone") end
+    state.players[1]._exp = state.players[1]._exp + 100
+
+    pool.tick()  -- must not raise
+    assert_equal(state.players[2]._exp, 100, "the unreadable player is still paid")
+end)
+
+test("players are tracked by identity, not by list position", function()
+    local state = fake.reset({ "Jonas", "Keddo" })
+    local pool = load_pool()
+    pool.tick()
+
+    state.players[1], state.players[2] = state.players[2], state.players[1]
+    state.players[1]._index, state.players[2]._index = 1, 2
+
+    state.players[1]._exp = state.players[1]._exp + 100
+    pool.tick()
+
+    local got = exp_by_name(state)
+    assert_equal(got["Jonas"], 100, "Jonas")
+    assert_equal(got["Keddo"], 100, "Keddo")
 end)
 
 real_print(string.format("\n%d passed, %d failed", passed, failed))

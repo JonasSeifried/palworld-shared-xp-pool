@@ -1,8 +1,7 @@
 -- Shared XP Pool -- live mod for Palworld via UE4SS.
 --
--- Install on the host only. Every XP function this mod touches is marked
--- _Server in the game's own naming, so the host decides XP for everyone and
--- clients need nothing installed.
+-- Install on the host only. Palworld decides XP server-side, so the host
+-- decides it for everyone and joining clients need nothing installed.
 
 local config = require("config")
 local probe = require("probe")
@@ -16,8 +15,8 @@ else
     require("pool").start()
 end
 
--- Hooking at load time is too early for anything that needs a world, so the
--- player dump is on a key instead. F7 in game, output goes to UE4SS.log.
+-- The player dump needs a loaded world, which does not exist at mod load time,
+-- so it goes on a key. F7 in game, output to UE4SS.log.
 RegisterKeyBind(Key.F7, function()
     local ok, err = pcall(probe.dump_players)
     if not ok then
@@ -25,4 +24,4 @@ RegisterKeyBind(Key.F7, function()
     end
 end)
 
-print("[SharedXPPool] ready -- F7 dumps the connected players\n")
+print("[SharedXPPool] ready -- press F7 in game to dump what the mod can see\n")

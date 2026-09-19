@@ -1,14 +1,21 @@
 local config = {}
 
--- Discovery mode. Hooks every candidate XP function, logs what fires and with
--- which arguments, and changes nothing. The function names below are read out
--- of the shipping binary so we know they exist, but that does not tell us which
--- one the game actually calls, nor whether UE4SS can hook it. Only a real run
--- answers that.
+-- Discovery mode. Observes and logs, changes nothing.
 --
--- Leave this on until UE4SS.log shows a hook firing when you earn XP, then turn
--- it off. Turn it back on after a game patch to re-confirm.
+-- The first probe run already answered the big question: a kill goes through
+-- PalExpDatabase:AddExp_EnemyDeath, whose only argument is a PalDeadInfo, so
+-- the XP amount is computed inside the game and never appears in the
+-- arguments. That is why the mod now watches each player's XP total instead of
+-- hooking the award. See pool.lua.
+--
+-- What is still unconfirmed is whether the mod can enumerate players and read
+-- their XP at all. Press F7 in game: if the dump shows the right names and the
+-- right XP numbers, sharing will work, because it uses exactly that code.
 config.probe_only = true
+
+-- How often to check. XP is not high-frequency, and each check is a handful of
+-- reads over the connected players, so a second is unnoticeable either way.
+config.poll_interval_ms = 1000
 
 -- Each connected player receives this fraction of any XP another player earns.
 --   1.0  every player gets the full amount (default)
