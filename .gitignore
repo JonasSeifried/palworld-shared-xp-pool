@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# never commit real saves
+*.sav
+fixtures/real/

@@ -1,0 +1,10 @@
+[project]
+name = "palworld-shared-xp-pool"
+version = "0.1.0"
+description = "Shared XP pool for Palworld servers"
+requires-python = ">=3.11"
+dependencies = ["palworld-save-tools"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
