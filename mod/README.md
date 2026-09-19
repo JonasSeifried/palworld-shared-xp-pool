@@ -149,8 +149,8 @@ recoverable -- that is what the save editor is for.
 
 ## Testing it with two people
 
-The keys stay bound when the mod is live, so testing takes one press rather than
-a grind.
+Set `config.debug_keys = true` first -- these keys inject XP, and a live session
+does not bind them. Hot reload picks the change up without a restart.
 
 **F8** pays the first player 1 XP, **F6** the second. Each reports who actually
 received it, then reads everyone again once the pool has ticked -- the direct
@@ -163,6 +163,34 @@ pals along. Paying them and watching your own side can.
 
 **Then stop and watch the log for ten seconds.** One payout is correct; a line
 every second is the loop returning.
+
+## Running it live
+
+Three things exist only because a live world is not a test world.
+
+**Nothing that injects XP is bound.** `config.debug_keys` is off, so F6, F8 and
+F9 are not registered at all. F6 and F8 pay out, and F9 walks reflected function
+parameters -- the call that hard-crashed the game twice during discovery. A
+stray function key mid-session should not be able to do any of that. Discovery
+mode arms them regardless, since it is nothing but those keys.
+
+**One key stays bound: pause.** `config.pause_key`, F11 by default. It stops
+payouts without stopping the loop -- the mod keeps reading everyone and moving
+the baselines along, so resuming does not then hand out everything earned while
+it was off. It is how to stop the mod without alt-tabbing out to edit files, and
+it touches nothing but a flag, so it cannot itself be what breaks.
+
+**A rise that cannot be real is taken as a baseline, not shared.** Two ways that
+happens. A player who cannot be read for a while leaves a stale stored total,
+and the next good reading spans the whole gap rather than one tick; that player
+is rebaselined on the reading that closes the gap, the same as somebody who just
+joined. And `config.max_rise_per_tick` (10,000,000) catches anything else, a
+garbage int64 read most likely -- a whole level costs about 35k XP at level 30
+and 1.1M at level 65, so no second of play comes near it.
+
+That last one is the case the pause key cannot help with: by the time anyone
+notices, the XP is already in everybody's character. Hence a rule rather than a
+reflex.
 
 ## Install
 
@@ -287,12 +315,13 @@ income. Sharing the tree is a v2 decision.
 | `Scripts/players.lua` | finding players, reading their XP, paying them |
 | `Scripts/probe.lua` | discovery: the hooks, and the F7 dump |
 
-`players.lua` goes through `PalUtility` rather than
+`players.lua` enumerates through `UEHelpers.GetAllPlayers`. Not
 `FindAllOf("PalPlayerState")`, which returns nothing at all on some builds --
 and fails silently, so every loop over it matches nobody and the mod looks
-simply broken. It also tries four different ways to reach a character's
-individual parameter, because which one is reachable from Lua is
-build-dependent, and remembers the one that worked.
+simply broken; and not `PalUtility`, which is what crashed run two. It tries
+four different ways to reach a character's individual parameter, because which
+one is reachable from Lua is build-dependent, and remembers the one that
+worked.
 
 ## Testing
 
@@ -300,17 +329,21 @@ build-dependent, and remembers the one that worked.
 lua tests/lua/test_pool.lua
 ```
 
-Sixteen tests against a stubbed UE4SS. The fake models what the game actually
+Twenty-eight tests against a stubbed UE4SS. The fake models what the game actually
 does, which is the part that matters: a payout really moves the number, and in
 `propagate` mode it moves *everyone's*, the way paying one player raised the
 other in game.
 
-Four of them are the ones worth having:
+The ones worth having:
 
 - a single earning settles after one payout and stays settled
 - a payout that leaks onto the earner does not start a loop
 - players the game already paid are not paid again
 - nothing on the read path calls `StaticFindObject`
+- a reading taken after a gap is a baseline, not a windfall
+- an impossible rise is ignored rather than shared
+- pausing stops payouts, and resuming pays no backlog
+- a live session binds nothing that injects XP
 
 Each was checked by breaking the code it defends and watching it go red. The
 first one only exists because removing the re-read broke nothing in the suite --

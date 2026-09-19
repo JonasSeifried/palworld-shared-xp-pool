@@ -24,7 +24,15 @@
 -- touched, and whoever it reached, is absorbed rather than counted as
 -- earnings.
 --
--- Between them the two rules make a feedback loop structurally impossible.
+-- **A reading after a gap is a baseline, not a rise.** When a player cannot be
+-- read for a while -- a pawn swap, a loading screen, an accessor that stopped
+-- working -- their stored total goes stale, and the next good reading would
+-- otherwise look like everything they earned in between arriving at once. That
+-- number becomes the best rise and is paid to everybody. So a player who was
+-- missed is rebaselined on their next reading rather than counted, the same way
+-- somebody who just joined is.
+--
+-- Between them the rules make a feedback loop structurally impossible.
 -- Sharing can only ever level players up to the best earner, never past them,
 -- and a tick where everyone is already level produces no payment at all.
 --
@@ -36,10 +44,11 @@ local players = require("players")
 
 local pool = {}
 
--- key -> { exp = <last total we saw> }
+-- key -> { exp = <last total we saw>, stale = <true if we missed a reading> }
 local watched = {}
 
 local running = false
+local paused = false
 local last_unreadable = 0
 
 local function read_totals(connected, keys)
@@ -59,6 +68,9 @@ local function rebaseline(connected, keys, totals)
             local state = watched[key]
             if state then
                 state.exp = total
+                -- A reading that landed clears the gap: from here the stored
+                -- total is current again.
+                state.stale = nil
             else
                 watched[key] = { exp = total }
             end
@@ -77,26 +89,49 @@ local function tick()
 
     local totals = read_totals(connected, keys)
 
+    -- Paused still reads and still moves the baselines forward, so resuming
+    -- does not pay out everything earned while it was off.
+    if paused then
+        rebaseline(connected, keys, totals)
+        return
+    end
+
     -- How much each player gained since the last look. A player we have not
     -- seen before gets a baseline and sits this tick out: their existing XP is
     -- not something they just earned.
     local rises = {}
     local best, sum, counted, unreadable = 0, 0, 0, 0
+    local cap = config.max_rise_per_tick or 0
 
     for i = 1, #connected do
         local key, total = keys[i], totals[i]
         if key and total then
             local state = watched[key]
-            if state then
+            -- A stale entry is one we failed to read at least once since it was
+            -- written. The difference from it spans that gap rather than this
+            -- tick, so it is not earnings. rebaseline below takes the reading.
+            if state and not state.stale then
                 local rise = total - state.exp
                 if rise < 0 then rise = 0 end  -- a fresh character, or a reset
-                rises[i] = rise
-                if rise > best then best = rise end
-                sum = sum + rise
-                counted = counted + 1
+                if cap > 0 and rise > cap then
+                    -- %s, not %d: this is the branch for a number that is
+                    -- not what it should be, and %d raises on a non-integer.
+                    print(string.format(
+                        "[SharedXPPool] ignoring an impossible rise of %s xp from %s"
+                        .. " -- taking it as a new baseline instead\n",
+                        tostring(rise), players.name(connected[i])))
+                else
+                    rises[i] = rise
+                    if rise > best then best = rise end
+                    sum = sum + rise
+                    counted = counted + 1
+                end
             end
         else
             unreadable = unreadable + 1
+            -- Mark what we missed, so the reading that follows the gap is not
+            -- mistaken for a tick's earnings.
+            if key and watched[key] then watched[key].stale = true end
         end
     end
 
@@ -167,6 +202,24 @@ local function schedule()
     end)
 end
 
+-- Pausing stops payouts, not the loop: it keeps reading so the baselines stay
+-- current. Returns the new state, which the key handler reports.
+function pool.set_paused(value)
+    paused = value and true or false
+    print(paused
+        and "[SharedXPPool] sharing PAUSED -- still watching, paying nobody\n"
+        or "[SharedXPPool] sharing RESUMED\n")
+    return paused
+end
+
+function pool.toggle_paused()
+    return pool.set_paused(not paused)
+end
+
+function pool.is_paused()
+    return paused
+end
+
 function pool.start()
     running = true
     schedule()
@@ -179,6 +232,7 @@ pool.tick = tick
 
 function pool.reset()
     watched = {}
+    paused = false
 end
 
 return pool

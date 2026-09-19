@@ -20,6 +20,28 @@ local function load_pool(overrides)
     return require("pool")
 end
 
+-- main.lua decides what to bind from the config, so the key tests have to load
+-- it for real rather than reach into it. Requiring config first and editing it
+-- means main's own require finds the edited one.
+local function load_main(overrides)
+    for _, name in ipairs({ "probe", "players", "config", "pool", "UEHelpers" }) do
+        package.loaded[name] = nil
+    end
+
+    local config = require("config")
+    for k, v in pairs(overrides or {}) do config[k] = v end
+
+    dofile("mod/SharedXPPool/Scripts/main.lua")
+    return config
+end
+
+local function said(state, text)
+    for _, line in ipairs(state.output) do
+        if line:find(text, 1, true) then return true end
+    end
+    return false
+end
+
 local function test(name, body)
     fake.install()
     local ok, err = pcall(body)
@@ -300,19 +322,38 @@ test("reading never touches PalUtility", function()
     assert_equal(reached, false, "PalUtility was left alone")
 end)
 
+test("a live session binds nothing that injects xp", function()
+    -- F6 and F8 pay out and F9 walks reflected function parameters, which is
+    -- what hard-crashed the game twice during discovery. On the host's keyboard
+    -- mid-session a stray function key would be a world event, so the default
+    -- config must not leave them armed.
+    local state = fake.reset({ "Jonas", "Keddo" })
+    load_main()
+
+    assert_equal(state.keybinds[6], nil, "F6 unbound")
+    assert_equal(state.keybinds[7], nil, "F7 unbound")
+    assert_equal(state.keybinds[8], nil, "F8 unbound")
+    assert_equal(state.keybinds[9], nil, "F9 unbound")
+    assert_equal(type(state.keybinds[11]), "function", "the pause key is bound")
+end)
+
+test("discovery mode arms the probe keys without being asked", function()
+    -- It is nothing but those keys; a discovery run with none of them bound
+    -- would observe nothing at all.
+    local state = fake.reset({ "Jonas" })
+    load_main({ probe_only = true, debug_keys = false })
+
+    assert_equal(type(state.keybinds[7]), "function", "F7 bound")
+    assert_equal(state.keybinds[11], nil, "and nothing to pause, so no pause key")
+end)
+
 test("main binds every probe key", function()
     -- This is here because F8 once did nothing at all in game: an edit to
     -- main.lua silently failed to apply, the key was never registered, and an
     -- unbound key looks exactly like a working key whose handler does nothing.
     -- Loading main.lua for real is the only way to catch that.
     local state = fake.reset({ "Jonas", "Keddo" })
-    package.loaded["probe"] = nil
-    package.loaded["players"] = nil
-    package.loaded["config"] = nil
-    package.loaded["pool"] = nil
-    package.loaded["UEHelpers"] = nil
-
-    dofile("mod/SharedXPPool/Scripts/main.lua")
+    load_main({ debug_keys = true })
 
     assert_equal(type(state.keybinds[6]), "function", "F6 bound")
     assert_equal(type(state.keybinds[7]), "function", "F7 bound")
@@ -479,6 +520,85 @@ test("player keys use the same form as the save files", function()
 
     assert_equal(players.key(state.players[1]),
         "D0686E06-00000000-00000000-00000000", "key")
+end)
+
+test("the pause key stops payouts, and resuming pays no backlog", function()
+    -- The point of the key is being able to stop the mod mid-session without
+    -- alt-tabbing out to edit files. Resuming must not then hand everybody
+    -- everything that was earned while it was off -- that would be a far bigger
+    -- injection than anything it does running.
+    local state = fake.reset({ "Jonas", "Keddo" })
+    load_main()
+    local pool = require("pool")
+
+    state.keybinds[11]()
+    assert_equal(pool.is_paused(), true, "paused")
+
+    pool.tick()
+    state.players[1]._exp = state.players[1]._exp + 100
+    pool.tick()
+
+    assert_equal(#state.grants, 0, "nobody paid while paused")
+    assert_equal(state.players[2]._exp, 0, "Keddo untouched")
+
+    state.keybinds[11]()
+    assert_equal(pool.is_paused(), false, "resumed")
+
+    pool.tick()
+    assert_equal(#state.grants, 0, "and the 100 earned while paused is not a backlog")
+
+    state.players[1]._exp = state.players[1]._exp + 50
+    pool.tick()
+    assert_equal(state.players[2]._exp, 50, "sharing picks up from where it resumed")
+end)
+
+test("a reading after a gap is a baseline, not a windfall", function()
+    -- A player who cannot be read for a while leaves a stale stored total, and
+    -- the next good reading spans the whole gap. Counted as a tick's earnings
+    -- that becomes the best rise and is paid to everybody at once -- the one
+    -- mistake the pause key cannot undo.
+    local state = fake.reset({ "Jonas", "Keddo", "HenBot" })
+    local pool = load_pool()
+    pool.tick()
+
+    local reachable = state.players[2].GetCharacterParameterComponent
+    state.players[2].GetCharacterParameterComponent = function() error("gone") end
+    pool.tick()
+
+    -- Whatever happened to him while he was out of reach.
+    state.players[2]._exp = 50000
+    state.players[2].GetCharacterParameterComponent = reachable
+    pool.tick()
+
+    assert_equal(#state.grants, 0, "nothing paid on the reading that closes the gap")
+    assert_equal(state.players[1]._exp, 0, "Jonas")
+    assert_equal(state.players[3]._exp, 0, "HenBot")
+
+    -- And it is a baseline, not a blacklist: the next real earning shares.
+    state.players[2]._exp = state.players[2]._exp + 10
+    pool.tick()
+    assert_equal(state.players[1]._exp, 10, "Jonas shares normally again")
+end)
+
+test("an impossible rise is ignored rather than shared", function()
+    -- The backstop for a reading that cannot be real -- a garbage int64, or a
+    -- baseline stale in some way the gap rule does not see. A whole level costs
+    -- about 35k xp at level 30, so nothing a second of play produces comes near
+    -- the cap.
+    local state = fake.reset({ "Jonas", "Keddo" })
+    local pool = load_pool({ max_rise_per_tick = 10000 })
+    pool.tick()
+
+    state.players[1]._exp = 999999999
+    pool.tick()
+
+    assert_equal(#state.grants, 0, "nobody was paid it")
+    assert_equal(state.players[2]._exp, 0, "Keddo untouched")
+    assert_equal(said(state, "impossible rise"), true, "and it said so")
+
+    state.players[1]._exp = state.players[1]._exp + 100
+    pool.tick()
+    assert_equal(state.players[2]._exp, 100, "the baseline moved on, so sharing resumes")
 end)
 
 real_print(string.format("\n%d passed, %d failed", passed, failed))

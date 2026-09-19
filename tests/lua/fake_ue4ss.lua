@@ -265,7 +265,7 @@ function fake.install()
     end
     -- Distinct values, so a test can tell the keys apart rather than watching
     -- them overwrite each other at index 0.
-    _G.Key = { F6 = 6, F7 = 7, F8 = 8, F9 = 9 }
+    _G.Key = { F6 = 6, F7 = 7, F8 = 8, F9 = 9, F11 = 11 }
     _G.print = function(line) state.output[#state.output + 1] = line end
 end
 

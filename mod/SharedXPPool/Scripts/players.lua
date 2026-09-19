@@ -282,10 +282,4 @@ function players.precise_payout()
     return precise_works
 end
 
--- The player's active pal, if it can be reached.
---
--- Only the probe uses this, to answer whether a payout reaches the party as
--- well as the player. In vanilla a player's active pal gains XP when they do,
--- so if a top-up skips the pal, the player being topped up ends up with pals
--- that level slower than the player doing the killing.
 return players
