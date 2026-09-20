@@ -1,8 +1,13 @@
 """Store art for Shared XP Pool.
 
+    python tools/make_store_art.py mod      (needs Pillow)
+
 The picture is the rule: four players earn different amounts, and all four end
-up on the same line. Nothing here is taken from the game -- shapes and type
-only -- so it is safe to upload anywhere.
+up on the same line. Four because that is MaxPlayerNum on a hosted world.
+
+Nothing here is taken from the game -- shapes and type only -- so it is safe to
+upload anywhere. Kept in the repo because both stores want the art again every
+time the pages are touched, and redrawing it by hand would not match.
 """
 import sys
 from PIL import Image, ImageDraw, ImageFont

@@ -177,6 +177,8 @@ anything is paid. Pause first, or the mod's own payouts are in the readings.
 | `nexus-description.bbcode` | the Nexus page, kept here so it is reviewed like the rest |
 | `steam-workshop-description.bbcode` | the Steam Workshop page, in Steam's BBCode dialect |
 | `PUBLISHING.md` | cutting a release, and what to fill in on each site |
+| `thumbnail-512.png` | the Steam Workshop thumbnail |
+| `banner-1280x720.png` | the Nexus page image |
 | `TESTING.md` | what a release has to be tried on before it goes out |
 
 `probe.lua` is a third of the mod's code and none of it runs in a normal
