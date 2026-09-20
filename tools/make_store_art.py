@@ -39,6 +39,69 @@ def spaced(draw, xy, text, font, fill, tracking, anchor_center_x=None):
     return total
 
 
+def fit(text, target_w, font_path, tracking):
+    """Largest size at which `text` fits `target_w`, tracking included."""
+    lo, hi = 8, 400
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        f = ImageFont.truetype(font_path, mid)
+        d = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+        w = sum(d.textlength(c, font=f) for c in text) + tracking * (len(text) - 1)
+        if w <= target_w:
+            lo = mid
+        else:
+            hi = mid - 1
+    return ImageFont.truetype(font_path, lo)
+
+
+def render_wordmark(w, h, path, tracking):
+    """Type only.
+
+    The thumbnail is shown at about a hundred pixels in a store grid, where
+    four bars and a level line turn to mud. A name that can be read at that
+    size does more work than a picture that cannot.
+    """
+    img = Image.new("RGB", (w, h), BG)
+    d = ImageDraw.Draw(img)
+
+    for i in range(24):
+        t = i / 24
+        d.ellipse(
+            [w * 0.5 - w * (0.75 - t * 0.3), h * 0.5 - h * (0.6 - t * 0.25),
+             w * 0.5 + w * (0.75 - t * 0.3), h * 0.5 + h * (0.6 - t * 0.25)],
+            fill=tuple(int(BG[k] + (BG_GLOW[k] - BG[k]) * t) for k in range(3)),
+        )
+
+    inner = w * 0.84
+    lines = ["SHARED", "XP POOL"]
+    fonts = [fit(t, inner, BOLD, tracking) for t in lines]
+    heights = [f.getbbox("H")[3] - f.getbbox("H")[1] for f in fonts]
+
+    line_gap = h * 0.045
+    rule_gap = h * 0.075
+    sub_gap = h * 0.055
+    sub_f = ImageFont.truetype(REG, int(h * 0.054))
+    sub_h = sub_f.getbbox("Hy")[3] - sub_f.getbbox("Hy")[1]
+
+    # Everything measured first, then placed, so the block sits optically
+    # centred rather than wherever the first line happened to start.
+    total = sum(heights) + line_gap * (len(lines) - 1) + rule_gap + sub_gap + sub_h
+    y = (h - total) / 2 * 0.92
+
+    for i, (text, f, hh) in enumerate(zip(lines, fonts, heights)):
+        spaced(d, (0, y - f.getbbox("H")[1]), text, f, TEXT, tracking, anchor_center_x=w / 2)
+        y += hh + (line_gap if i < len(lines) - 1 else 0)
+
+    rule_y = y + rule_gap
+    d.line([w * 0.32, rule_y, w * 0.68, rule_y], fill=LINE, width=max(2, int(h / 150)))
+
+    d.text((w / 2, rule_y + sub_gap), "everyone stays the same level",
+           font=sub_f, fill=MUTED, anchor="ma")
+
+    img.save(path)
+    print(f"{path}  {w}x{h}")
+
+
 def render(w, h, path, title_px, sub_px, tag_px, bar_w, gap, tracking):
     img = Image.new("RGB", (w, h), BG)
     d = ImageDraw.Draw(img)
@@ -100,7 +163,6 @@ def render(w, h, path, title_px, sub_px, tag_px, bar_w, gap, tracking):
     print(f"{path}  {w}x{h}")
 
 
-render(512, 512, sys.argv[1] + "/thumbnail-512.png",
-       title_px=42, sub_px=21, tag_px=15, bar_w=54, gap=30, tracking=3)
+render_wordmark(512, 512, sys.argv[1] + "/thumbnail-512.png", tracking=4)
 render(1280, 720, sys.argv[1] + "/banner-1280x720.png",
        title_px=82, sub_px=36, tag_px=22, bar_w=88, gap=136, tracking=7)

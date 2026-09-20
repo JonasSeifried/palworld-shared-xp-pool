@@ -69,7 +69,7 @@ your Steam library if you own Palworld. It is a GUI, so this part is manual.
      will not see an update.
    - **Author:** your Steam name.
    - **Thumbnail:** [`thumbnail-512.png`](thumbnail-512.png). Must be under
-     1MB or the upload fails with `k_EResultLimitExceeded`; it is 24KB.
+     1MB or the upload fails with `k_EResultLimitExceeded`; it is 28KB.
 5. *Upload To Steam*, with change notes.
 6. On the Workshop page, use **Add/Remove Required Items** to add the UE4SS
    Workshop item as a dependency. The uploader's own Dependencies field is
