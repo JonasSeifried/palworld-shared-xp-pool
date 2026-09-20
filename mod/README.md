@@ -32,10 +32,13 @@ off: Palworld has no player-only XP call.
 On the **host's** machine only. Palworld decides XP server-side, so the host
 decides it for everyone and joining clients need nothing installed.
 
-**Playing it:** take the zip from a [release](../../../releases) and extract it
-over the Palworld folder -- the one with `Pal\` in it. Everything lands in
-`Pal\Binaries\Win64\ue4ss\Mods\SharedXPPool\`. [`INSTALL.txt`](INSTALL.txt) is
-the same instructions, and ships inside the zip.
+**Playing it:** take `SharedXPPool-<version>.zip` from a
+[release](../../../releases) and extract it over the Palworld folder -- the one
+with `Pal\` in it. It carries the mod once for each folder a UE4SS build reads
+mods from, so it works whether UE4SS came from the Steam Workshop or from
+Okaetsu's GitHub release; only the one your build uses ever loads.
+[`INSTALL.txt`](INSTALL.txt) is the same instructions, and ships inside the
+zip.
 
 **Working on it:** the two scripts below instead, which junction this folder
 into the game so edits take effect in place.
@@ -167,6 +170,8 @@ anything is paid. Pause first, or the mod's own payouts are in the readings.
 | `Scripts/probe.lua` | discovery: the hooks, the F7 dump, the F9 signatures |
 | `INSTALL.txt` | what ships in the zip, for somebody who has only the zip |
 | `nexus-description.bbcode` | the Nexus page, kept here so it is reviewed like the rest |
+| `steam-workshop-description.bbcode` | the Steam Workshop page, in Steam's BBCode dialect |
+| `PUBLISHING.md` | cutting a release, and what to fill in on each site |
 
 `probe.lua` is a third of the mod's code and none of it runs in a normal
 session, so it is not loaded unless `debug_keys` or `probe_only` is set. Of the

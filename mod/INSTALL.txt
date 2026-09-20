@@ -8,43 +8,64 @@ INSTALL ON THE HOST ONLY
 Palworld decides XP server-side, so whoever hosts the world decides it for
 everybody. People joining you install nothing.
 
-1. Install UE4SS -- Okaetsu's Palworld fork, not stock RE-UE4SS:
+1. Install UE4SS, if you have not already. Either route works:
+
+   Steam Workshop -- subscribe to "UE4SS Experimental (Palworld)". Easiest,
+   and what most people use.
+
+   Or from GitHub -- Okaetsu's Palworld fork, not stock RE-UE4SS:
    https://github.com/Okaetsu/RE-UE4SS/releases/latest
 
    Palworld made engine edits in 0.4.1.5 that shift the memory layout, so a
-   stock UE4SS install crashes on mods that read certain game values. The fork
-   is stock UE4SS with the MemberVariableLayout.ini fix already in it. Stock
-   plus that file added by hand works too, and is more steps.
+   stock UE4SS install crashes on mods that read certain game values. Both
+   routes above include the MemberVariableLayout.ini fix and are built from
+   the same commit. Stock plus that file added by hand works too, and is more
+   steps: https://pwmodding.wiki/docs/users/ue4ss/installation
 
-   The community install guide covers both routes and stays current:
-   https://pwmodding.wiki/docs/users/ue4ss/installation
-
-   Install exactly one copy. If you have UE4SS from the Steam Workshop,
-   unsubscribe from it -- two copies load at once and the game crashes on
-   launch.
+   Install exactly ONE copy. If you have both the Workshop one and a manual
+   one, two copies of UE4SS load at once and the game crashes on launch.
 
 2. Extract this archive over your Palworld folder, the one with Pal\ in it:
 
      ...\steamapps\common\Palworld\
 
-   The files land in Pal\Binaries\Win64\ue4ss\Mods\SharedXPPool\.
-
-   Note the ue4ss\ in that path. Older UE4SS builds kept mods in
-   Pal\Binaries\Win64\Mods\ instead, and some install notes still say so. If
-   your game has that folder and no ue4ss\Mods, you are on an old build --
-   update it, or the mod sits somewhere nothing reads.
+   That is the whole install. Read the next section only if something is
+   wrong.
 
 3. Start the game and host your world.
+
+
+WHY THE ARCHIVE HAS THREE COPIES OF THE MOD
+-------------------------------------------
+
+Different UE4SS builds read mods from different folders, and you should not
+have to know which one you have. So the archive contains all three:
+
+  Mods\NativeMods\UE4SS\Mods\         the Steam Workshop UE4SS
+  Pal\Binaries\Win64\ue4ss\Mods\      UE4SS from Okaetsu's GitHub release
+  Pal\Binaries\Win64\Mods\            UE4SS 3.0.1 and older
+
+UE4SS looks for mods next to its own dll, and only one UE4SS can be installed
+at a time, so exactly one of those copies is ever loaded. The other two are
+inert text files taking up 40KB. Nothing loads twice.
+
+If you would rather keep it tidy, find the folder your UE4SS actually uses and
+delete the SharedXPPool folder from the other two.
 
 
 DID IT WORK
 -----------
 
-Look in Pal\Binaries\Win64\ue4ss\UE4SS.log for:
+Find UE4SS.log -- it sits next to the UE4SS dll, so in the same place the
+folders above are -- and look for:
 
   [SharedXPPool] loading
   [SharedXPPool] sharing active, checking every 1000 ms
   [SharedXPPool] ready -- bound: F11 pause/resume sharing  (debug keys off)
+
+If none of those lines are there, UE4SS is not loading the mod. Check that
+UE4SS itself is working before anything else: the log should exist and have
+content in it.
 
 F11 pauses and resumes sharing while you play. Nothing accumulates while it is
 paused.
@@ -62,14 +83,18 @@ most people touch:
 Set config.verbose = false if you would rather have one summary line per tick
 than one line per player.
 
+Edit the copy in the folder your UE4SS actually reads. Editing one of the other
+two changes nothing, which is confusing enough to be worth saying twice.
+
 
 UNINSTALL
 ---------
 
-Delete Pal\Binaries\Win64\ue4ss\Mods\SharedXPPool\.
+Delete the SharedXPPool folder from wherever you have it -- all three places,
+if you never tidied them up.
 
 Nothing is written to your save. The mod adds XP through the game's own
-function, so what it has already granted stays -- as it would if you had earned
+function, so what it has already granted stays, as it would if you had earned
 it. Nobody is ever lowered, by the mod or by removing it.
 
 

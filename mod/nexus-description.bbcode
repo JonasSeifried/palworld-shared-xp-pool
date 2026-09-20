@@ -11,12 +11,18 @@ It does not invent XP. The world progresses at the pace of whoever is doing best
 Palworld decides XP server-side, so whoever hosts the world decides it for everybody. [b]People joining you install nothing.[/b]
 
 [list=1]
-[*][b]Install UE4SS -- [url=https://github.com/Okaetsu/RE-UE4SS/releases/latest]Okaetsu's Palworld fork[/url], not stock RE-UE4SS.[/b] Palworld's 0.4.1.5 engine edits shift the memory layout, so a stock install crashes on mods that read certain game values; the fork is stock UE4SS with the MemberVariableLayout.ini fix already in it. The [url=https://pwmodding.wiki/docs/users/ue4ss/installation]community install guide[/url] covers this and the manual route. Install exactly one copy -- if you have the Steam Workshop UE4SS, unsubscribe, or two copies load at once and the game crashes on launch.
-[*][b]Extract this archive over your Palworld folder[/b], the one containing [i]Pal\[/i]. Everything lands in [i]Pal\Binaries\Win64\ue4ss\Mods\SharedXPPool\[/i]. Note the [i]ue4ss\[/i] in that path -- older builds used [i]Pal\Binaries\Win64\Mods\[/i], and if that is what your game has, update UE4SS or the mod will sit where nothing reads it.
+[*][b]Install UE4SS[/b] if you have not already. Subscribing to [b]UE4SS Experimental (Palworld)[/b] on the Steam Workshop is the easiest route and what most people use; [url=https://github.com/Okaetsu/RE-UE4SS/releases/latest]Okaetsu's GitHub release[/url] is the same build if you prefer. What you cannot use is a plain stock RE-UE4SS install: Palworld's 0.4.1.5 engine edits shift the memory layout, and both routes above carry the MemberVariableLayout.ini fix that handles it. The [url=https://pwmodding.wiki/docs/users/ue4ss/installation]community install guide[/url] covers the manual route. [b]Install exactly one copy[/b] -- two copies of UE4SS load at once and the game crashes on launch.
+[*][b]Extract this archive over your Palworld folder[/b], the one containing [i]Pal\[/i]. That is the whole install -- you do not need to find a Mods folder, because the archive contains one copy of the mod for each place a UE4SS build looks:
+[list]
+[*][i]Mods\NativeMods\UE4SS\Mods\[/i] -- the Steam Workshop UE4SS
+[*][i]Pal\Binaries\Win64\ue4ss\Mods\[/i] -- UE4SS from Okaetsu's GitHub release
+[*][i]Pal\Binaries\Win64\Mods\[/i] -- UE4SS 3.0.1 and older
+[/list]
+UE4SS looks for mods next to its own dll and only one UE4SS can be installed at a time, so exactly one of those copies ever loads and the other two are 40KB of inert text. Nothing loads twice. Delete the ones you do not use if you want it tidy -- and if you edit [i]config.lua[/i], edit the copy in the folder your UE4SS actually reads.
 [*][b]Start the game and host your world.[/b]
 [/list]
 
-To check it loaded, look in [i]Pal\Binaries\Win64\ue4ss\UE4SS.log[/i] for:
+To check it loaded, find [i]UE4SS.log[/i] -- it sits next to the UE4SS dll, in the same place as the folders above -- and look for:
 [code]
 [SharedXPPool] loading
 [SharedXPPool] sharing active, checking every 1000 ms

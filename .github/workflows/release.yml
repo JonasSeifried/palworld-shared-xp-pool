@@ -40,34 +40,23 @@ jobs:
           raw="${GIVEN:-$GITHUB_REF_NAME}"
           echo "value=${raw#v}" >> "$GITHUB_OUTPUT"
 
-      # The archive mirrors the game folder from Pal/ down, so the whole thing
-      # extracts over a Palworld install and every file lands where UE4SS looks
-      # for it. That is also the layout Vortex deploys, so the same file works
-      # for manual installers and for mod managers.
-      - name: Build the archive
+      # tools/build_release.py explains what goes in each archive and why.
+      # Keeping it in a script rather than inline here means it can be run and
+      # checked locally before a tag exists.
+      - name: Build the archives
         id: build
         env:
           VERSION: ${{ steps.version.outputs.value }}
         run: |
           set -euo pipefail
-          root="dist/SharedXPPool"
-          target="$root/Pal/Binaries/Win64/ue4ss/Mods/SharedXPPool"
-          mkdir -p "$target"
-          cp -r mod/SharedXPPool/Scripts "$target/Scripts"
-          cp mod/SharedXPPool/enabled.txt "$target/enabled.txt"
-          cp mod/INSTALL.txt "$target/INSTALL.txt"
-          cp LICENSE "$target/LICENSE.txt"
-
-          name="SharedXPPool-$VERSION.zip"
-          (cd "$root" && zip -r -q "../$name" .)
-          echo "name=$name" >> "$GITHUB_OUTPUT"
-          echo "path=dist/$name" >> "$GITHUB_OUTPUT"
-          unzip -l "dist/$name"
+          python3 tools/build_release.py "$VERSION"
+          echo "manual=dist/SharedXPPool-$VERSION.zip" >> "$GITHUB_OUTPUT"
+          echo "workshop=dist/SharedXPPool-$VERSION-workshop.zip" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ steps.build.outputs.name }}
-          path: ${{ steps.build.outputs.path }}
+          name: SharedXPPool-${{ steps.version.outputs.value }}
+          path: dist/*.zip
 
       # Only a tag publishes. A manual run is for checking the archive before
       # committing to a version number.

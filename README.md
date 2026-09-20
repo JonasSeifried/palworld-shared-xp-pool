@@ -26,8 +26,9 @@ You do not need the save editor to use the mod.
 On the **host's** machine only -- Palworld decides XP server-side, so joining
 players need nothing.
 
-Take the zip from a [release](../../releases) and extract it over your Palworld
-folder. To work on the mod instead, junction it into the game:
+Take `SharedXPPool-<version>.zip` from a [release](../../releases) and extract
+it over your Palworld folder; it covers every UE4SS layout, so there is no Mods
+folder to find. To work on the mod instead, junction it into the game:
 
 ```powershell
 .\tools\install_ue4ss.ps1 -Dev
@@ -44,8 +45,8 @@ lua mod/tests/test_pool.lua
 ```
 
 The save editor's suite is separate; see [save-editor/](save-editor/). Both run
-on every push, and tagging `v*` builds the release zip -- see
-[.github/workflows/](.github/workflows/).
+on every push, and tagging `v*` builds the release archives -- see
+[.github/workflows/](.github/workflows/) and [mod/PUBLISHING.md](mod/PUBLISHING.md).
 
 ## Licence
 

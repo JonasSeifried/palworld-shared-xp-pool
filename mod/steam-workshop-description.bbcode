@@ -1,0 +1,48 @@
+Everyone in your world stays at the same level. Go off and do your own thing -- mine, build, hunt, explore -- and nobody falls behind. Somebody joining you starts where you are, not at level 1. Install on the host only.
+
+[h1]Important -- you have to turn it on[/h1]
+After you subscribe, do this:
+[olist]
+[*]Launch the game and wait until you reach the title screen.
+[*]Go to [b]Options > Mod Management[/b] and make sure [b]Enable Mod[/b] is set to [b]ON[/b].
+[*]Make sure the checkbox next to [b]Shared XP Pool[/b] is [b]CHECKED[/b].
+[*]Click the blue [b]Save[/b] button. The game restarts.
+[*]Once it starts up again, Shared XP Pool is enabled.
+[/olist]
+Only the [b]host[/b] needs this. Palworld decides XP server-side, so the host decides it for everybody and people joining you install nothing.
+
+[h1]What it does[/h1]
+One rule, re-asserted every second: read everybody's XP total, find the highest, and move everyone else toward it. Catching up a returning player and sharing during play are the same thing, so there is no login step and no catch-up mode.
+
+It does not invent XP. The world progresses at the pace of whoever is doing best, and everybody shares that pace.
+
+[h1]What it does not do[/h1]
+[b]It will not level you faster than the best player among you.[/b] Two of you killing things in different places does not add up -- you both end up wherever the better of you got to. Standing together in vanilla already gives you both the kills, so playing together is still the quickest way to play. This removes the penalty for [i]not[/i] doing that; it is not an XP multiplier.
+
+[b]Your pals come along.[/b] XP is paid through the game's own party grant, so a pal gains roughly a fifth of what its owner does, the same way it would if the owner had earned it. Palworld has no player-only XP call, so the mod cannot change that fraction.
+
+[b]Nobody is ever lowered.[/b] If you are the one in front, nothing happens to you.
+
+[h1]Settings[/h1]
+Edit [i]Scripts/config.lua[/i] in the mod's folder. Every setting has the reasoning written next to it. The one most people touch is how fast somebody behind catches up:
+[code]config.catch_up_rate = 0.25   -- a quarter of the gap each second
+                              -- 1.0 is instant, 0 is off[/code]
+A fraction rather than a number of XP, because an amount that is sensible at level 10 -- where a level costs 1,900 XP -- is a rounding error at level 60, where it costs 670,000.
+
+[b]F11[/b] pauses and resumes sharing while you play. Nothing accumulates while it is paused.
+
+[h1]Is it safe to run on a world I care about?[/h1]
+That is what it was built for.
+[list]
+[*]Payouts name their recipient, so nothing is forwarded to bystanders and the target never moves while it is being approached.
+[*]A reading the game could not have produced -- one that went backwards, or one in the billions -- is refused, and never becomes the baseline the next reading is judged against.
+[*]Nobody is paid on the first tick they are seen, in case the number is still settling.
+[*]Payouts are watched landing. If XP stops moving, it stops paying and says so in the log instead of paying into the void.
+[*]XP is added through the game's own function, so level-ups, the UI and replication all happen normally. It never writes a level.
+[/list]
+Unsubscribing removes it. Nothing is written to your save, and what it has already granted stays, as it would if you had earned it.
+
+[h1]Source[/h1]
+MIT licensed, about 470 lines of Lua with 38 tests. The README documents the approaches that were tried and abandoned, which is worth reading before suggesting one: [url=https://github.com/JonasSeifried/palworld-shared-xp-pool]github.com/JonasSeifried/palworld-shared-xp-pool[/url]
+
+Bug reports with the relevant lines of UE4SS.log are much more useful than bug reports without them.
