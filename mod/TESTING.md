@@ -109,3 +109,27 @@ XP of mining crossed one point per second for ten seconds, because at 0.25
 every gap of seven or less rounds down to the minimum payout and the minimum
 was 1. Raised to `MIN_STEP`, so a gap worth less than one early-game action
 closes in a single tick.
+
+### Results, v1.0.0-beta.3, 2026-09-20
+
+The re-test of the raised minimum. Twelve payouts, every one matching the rule:
+62 behind paid 25, then 37 paid 25, then 12 paid 12; after that every small gap
+-- 2, 5, 10, 11 -- closed in a single tick paying exactly the gap. No tail.
+
+Two things this session proved that the earlier ones did not:
+
+**The overshoot clamp carries ordinary play.** It used to matter only for a
+`catch_up_rate` above 1; now the minimum is larger than most early gaps, so
+every payout under 25 relies on it. Across the whole session the player behind
+never once read above the player in front, and every gap closed to exact
+equality.
+
+**Granted XP survives a restart.** Both players rejoined at 2067, which is
+exactly where the previous session left them. The XP the mod hands out goes
+through the game's own path and is saved like any other, rather than living in
+memory until the world unloads.
+
+The pal question is still open: payouts of 2 to 25 give a pal roughly 0 to 5,
+where the old 1-XP dribbles gave it nothing. That is closer to what the README
+promises than the old behaviour was, and small enough that it was not visible
+in a session. Nobody has watched for it deliberately.
