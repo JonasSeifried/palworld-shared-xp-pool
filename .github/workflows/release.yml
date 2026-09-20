@@ -65,7 +65,26 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "${{ steps.build.outputs.path }}" \
+          set -euo pipefail
+
+          # A semver pre-release tag has a hyphen in it (v1.0.0-beta.1). Flag
+          # those, so a beta is never what GitHub offers a player as "Latest".
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
+
+          # printf rather than a heredoc: this is a YAML block scalar, so every
+          # line is indented, and an indented heredoc terminator never matches.
+          printf '%s\n' \
+            'Install on the **host** only, and you need UE4SS.' \
+            '' \
+            'Extract `SharedXPPool-*.zip` over your Palworld folder -- the one with `Pal\` in it. It carries the mod once for each folder a UE4SS build reads mods from, so it works whether UE4SS came from the Steam Workshop or from Okaetsu'"'"'s GitHub release. `INSTALL.txt` inside has the rest.' \
+            '' \
+            '`SharedXPPool-*-workshop.zip` is the Steam Workshop payload, for the Palworld Mod Uploader. Not for players.' \
+            > release-notes.md
+
+          gh release create "$GITHUB_REF_NAME" $prerelease \
+            "${{ steps.build.outputs.manual }}" \
+            "${{ steps.build.outputs.workshop }}" \
             --title "$GITHUB_REF_NAME" \
-            --notes "Extract over your Palworld install. Host only. Needs Okaetsu's UE4SS fork -- see the README." \
+            --notes-file release-notes.md \
             --verify-tag
