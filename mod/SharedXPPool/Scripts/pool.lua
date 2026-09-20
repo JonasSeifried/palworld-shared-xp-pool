@@ -56,6 +56,15 @@ local function forget()
     refused, last_unreadable = false, 0
 end
 
+-- Whether anything is being remembered about the world that was loaded.
+-- Nothing is in the menu or through a load screen, which is exactly when the
+-- world object changes most.
+local function remembering()
+    return next(last_seen) ~= nil
+        or next(refusals) ~= nil
+        or next(landing) ~= nil
+end
+
 -- The Lua state outlives a loaded world: going to the main menu and loading a
 -- different save leaves every baseline describing somewhere else, and the same
 -- player legitimately back at a lower total. Without this they would be
@@ -199,7 +208,14 @@ end
 local function tick()
     -- Before the early return below, because a world can be swapped while
     -- nobody is connected -- which is in fact the usual way to do it.
-    if world_changed() then
+    --
+    -- A change on its own means nothing. Measured in game: the world object
+    -- changes twice between launching the game and the main menu, and once
+    -- more on entering a world, and then stays put for the rest of the
+    -- session. Only a change with something to throw away is worth acting on,
+    -- and saying "forgetting everything" three times before a single player
+    -- has been read is both alarming and untrue.
+    if world_changed() and remembering() then
         forget()
         print("[SharedXPPool] a different world is loaded -- forgetting"
             .. " everything read in the last one\n")

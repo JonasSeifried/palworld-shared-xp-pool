@@ -371,6 +371,25 @@ test("a payout landing again clears the giving-up", function()
     assert_equal(state.players[1]._exp, 1000, "paying resumed once the total moved")
 end)
 
+test("the world changing before anybody is read says nothing", function()
+    -- Measured in game: the world object changes twice between launching the
+    -- game and the main menu, and once more on entering a world. Announcing
+    -- "forgetting everything read in the last one" at each of those, before a
+    -- single player has been read, is alarming and untrue -- and it was the
+    -- first thing a real log showed.
+    local state = fake.reset({})
+    local pool = load_pool({ catch_up_rate = 1.0 })
+
+    pool.tick()
+    state.world_id = 0x9001
+    pool.tick()
+    state.world_id = 0x9002
+    pool.tick()
+
+    assert_equal(said(state, "a different world is loaded"), false,
+        "there was nothing to forget, so it said nothing")
+end)
+
 test("loading a different world forgets the old baselines", function()
     -- The Lua state outlives a loaded world. Going to the menu and loading
     -- another save leaves every baseline describing somewhere else, and the

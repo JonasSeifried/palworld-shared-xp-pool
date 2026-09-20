@@ -48,6 +48,11 @@ into the game so edits take effect in place.
 .\tools\link_mod.ps1
 ```
 
+`link_mod.ps1` makes the game's mod folder a junction into this one, so run
+`.\tools\unlink_mod.ps1` before installing a release archive over the game --
+extracting it while the junction is there writes straight through it and
+overwrites the working tree.
+
 `install_ue4ss.ps1` fetches [Okaetsu's Palworld fork of
 UE4SS](https://github.com/Okaetsu/RE-UE4SS/releases/latest). Stock RE-UE4SS does
 not work -- Palworld made engine edits in 0.4.1.5 and needs this build. Do not
@@ -172,6 +177,7 @@ anything is paid. Pause first, or the mod's own payouts are in the readings.
 | `nexus-description.bbcode` | the Nexus page, kept here so it is reviewed like the rest |
 | `steam-workshop-description.bbcode` | the Steam Workshop page, in Steam's BBCode dialect |
 | `PUBLISHING.md` | cutting a release, and what to fill in on each site |
+| `TESTING.md` | what a release has to be tried on before it goes out |
 
 `probe.lua` is a third of the mod's code and none of it runs in a normal
 session, so it is not loaded unless `debug_keys` or `probe_only` is set. Of the
