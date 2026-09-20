@@ -502,22 +502,24 @@ end)
 
 test("player keys use the same form as the save files", function()
     -- The UId words come back signed, and "%08X" widens a negative one to
-    -- sixteen digits: Keddo's key logged as FFFFFFFFD0686E06 where his save
-    -- file is named D0686E06.
-    local state = fake.reset({ "Keddo" })
+    -- sixteen digits, so a word with the high bit set logged as
+    -- FFFFFFFFABCD1234 for a player whose save file is named ABCD1234. The
+    -- mask in players.key is what closes that gap; this is a real reading from
+    -- a live session, with the id replaced.
+    local state = fake.reset({ "P1" })
     load_pool()
     local players = require("players")
 
     state.players[1].GetPlayerState = function()
         return {
             IsValid = function() return true end,
-            PlayerNamePrivate = { ToString = function() return "Keddo" end },
-            PlayerUId = { A = 0xD0686E06 - 0x100000000, B = 0, C = 0, D = 0 },
+            PlayerNamePrivate = { ToString = function() return "P1" end },
+            PlayerUId = { A = 0xABCD1234 - 0x100000000, B = 0, C = 0, D = 0 },
         }
     end
 
     assert_equal(players.key(state.players[1]),
-        "D0686E06-00000000-00000000-00000000", "key")
+        "ABCD1234-00000000-00000000-00000000", "key")
 end)
 
 -- -------------------------------------------------------------- pause, watch

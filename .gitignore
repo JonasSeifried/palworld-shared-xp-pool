@@ -9,3 +9,6 @@ fixtures/real/
 # UE4SS output, if anyone ever copies a log into the tree
 UE4SS.log
 *.egg-info/
+
+# release archives, built by tools/build_release.py
+dist/
