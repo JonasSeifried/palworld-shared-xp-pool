@@ -11,17 +11,28 @@ everybody. People joining you install nothing.
 1. Install UE4SS -- Okaetsu's Palworld fork, not stock RE-UE4SS:
    https://github.com/Okaetsu/RE-UE4SS/releases/latest
 
-   Stock RE-UE4SS does not work. Palworld made engine edits in 0.4.1.5 and
-   needs that build.
+   Palworld made engine edits in 0.4.1.5 that shift the memory layout, so a
+   stock UE4SS install crashes on mods that read certain game values. The fork
+   is stock UE4SS with the MemberVariableLayout.ini fix already in it. Stock
+   plus that file added by hand works too, and is more steps.
 
-   If you already subscribed to a UE4SS copy on the Steam Workshop, unsubscribe
-   from it. Two copies load at once and the game crashes on launch.
+   The community install guide covers both routes and stays current:
+   https://pwmodding.wiki/docs/users/ue4ss/installation
+
+   Install exactly one copy. If you have UE4SS from the Steam Workshop,
+   unsubscribe from it -- two copies load at once and the game crashes on
+   launch.
 
 2. Extract this archive over your Palworld folder, the one with Pal\ in it:
 
      ...\steamapps\common\Palworld\
 
    The files land in Pal\Binaries\Win64\ue4ss\Mods\SharedXPPool\.
+
+   Note the ue4ss\ in that path. Older UE4SS builds kept mods in
+   Pal\Binaries\Win64\Mods\ instead, and some install notes still say so. If
+   your game has that folder and no ue4ss\Mods, you are on an old build --
+   update it, or the mod sits somewhere nothing reads.
 
 3. Start the game and host your world.
 
