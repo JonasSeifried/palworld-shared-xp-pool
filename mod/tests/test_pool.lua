@@ -200,6 +200,37 @@ test("catch_up_rate = 0 turns sharing off", function()
     assert_equal(state.players[1]._exp, 0, "untouched")
 end)
 
+test("a gap smaller than one action closes at once, not one point a second", function()
+    -- Measured in game: ten XP of mining reached the other player one point
+    -- per second for ten seconds, because at 0.25 every gap of seven or less
+    -- rounds down to the minimum payout, and the minimum used to be 1.
+    local state = fake.reset({ "P1", "P2" })
+    state.players[1]._exp, state.players[2]._exp = 1000, 1000
+    local pool = load_pool({ catch_up_rate = 0.25 })
+    settle(pool)
+
+    state.players[2]._exp = 1010      -- ten XP of mining
+    pool.tick()
+
+    assert_equal(state.players[1]._exp, 1010, "level after one tick")
+    assert_equal(#state.grants, 1, "and it took one payout, not ten")
+end)
+
+test("the minimum payout cannot overshoot the top", function()
+    -- The minimum is larger than most early gaps, so the clamp that stops a
+    -- rate above 1 overshooting is now load-bearing for ordinary play too.
+    local state = fake.reset({ "P1", "P2" })
+    state.players[1]._exp, state.players[2]._exp = 1000, 1000
+    local pool = load_pool({ catch_up_rate = 0.25 })
+    settle(pool)
+
+    state.players[2]._exp = 1003      -- far below the minimum payout
+    pool.tick()
+
+    assert_equal(state.players[1]._exp, 1003, "landed exactly on the top")
+    assert_equal(state.grants[1].amount, 3, "paid the gap, not the minimum")
+end)
+
 test("a huge gap closes in a sensible number of ticks", function()
     -- Joining a world two million XP ahead. At a quarter of the gap a second
     -- this should be over in well under a minute, not a slow crawl.

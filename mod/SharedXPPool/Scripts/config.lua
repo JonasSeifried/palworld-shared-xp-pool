@@ -16,9 +16,11 @@ local config = {}
 -- wrong at one end of the game or the other.
 --
 -- At 0.25 a gap of two million is essentially gone in half a minute, and a gap
--- of forty closes at once. Lower it if you would rather catch up visibly over a
--- few seconds than arrive all at once -- it is also what spreads out the
--- level-up popups, and the XP that reaches your pals along the way.
+-- worth less than one kill closes in a single tick -- payouts have a floor, so
+-- the tail does not trickle a point at a time. Lower it if you would rather
+-- catch up visibly over a few seconds than arrive all at once -- it is also
+-- what spreads out the level-up popups, and the XP that reaches your pals
+-- along the way.
 config.catch_up_rate = 0.25
 
 -- Key that pauses and resumes sharing, by name in UE4SS's Key table.

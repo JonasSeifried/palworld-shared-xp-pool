@@ -185,12 +185,27 @@ local function highest(seen)
     return top
 end
 
+-- The smallest payout worth making.
+--
+-- A minimum has always been here; it was 1, which is the smallest and so the
+-- slowest possible. At 0.25 every gap of seven or less rounds down to it, so
+-- ten XP of mining reached the other player one point per second for ten
+-- seconds -- correct, and unpleasant to watch.
+--
+-- The fraction is still the mechanism. This only decides how the last stretch
+-- lands: a gap smaller than one early-game action closes at once rather than
+-- trickling. Twenty-five is about that size -- a kill is 5-12, a capture 39 --
+-- and at level 60, where a level costs 670,000, it is far below anything the
+-- fraction produces and never comes into play.
+local MIN_STEP = 25
+
 -- A fraction of the gap, because a fixed amount that suits level 10 is a
--- rounding error at level 60. Never below 1, or the last few points creep
--- forever; never above the gap, or a rate over 1 overshoots the top.
+-- rounding error at level 60. Never below MIN_STEP, or the last few points
+-- creep; never above the gap, or a rate over 1 overshoots the top -- which is
+-- also what keeps the minimum from overshooting.
 local function step(gap, rate)
     local owed = math.floor(gap * rate)
-    if owed < 1 then owed = 1 end
+    if owed < MIN_STEP then owed = MIN_STEP end
     if owed > gap then owed = gap end
     return owed
 end

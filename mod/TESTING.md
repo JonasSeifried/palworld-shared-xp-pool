@@ -91,5 +91,21 @@ Two lines mean an assumption about the game was wrong:
   refusal rule is too strict. It no longer lowers a baseline on its own, which
   is deliberate, so a false positive now persists instead of healing.
 
-Neither has been seen. Neither has been ruled out either: every session so far
-has been solo, so the payout path has never run in a game.
+### Results, v1.0.0-beta.2, 2026-09-20
+
+Two players on a hosted test world, apart. It works, and the XP arrived on the
+other machine as well as in the host's log.
+
+`paying via AddExpValue_forPlayerParty_Server` on the first payout, and the
+arithmetic matches the rule exactly: 721 behind paid 180, 541 paid 135, 406
+paid 101. Pause held through eleven XP earned and paid nobody; resume caught
+up. A player who logged out, missed a chunk and rejoined was level again within
+seconds, with no login hook involved. Neither `does not go down` nor `without
+their total moving` appeared, and the world message fired once, on leaving the
+world, which is the beta.2 fix behaving in a game.
+
+One thing to fix, and it is the reason a phase B exists: the tail dribbled. Ten
+XP of mining crossed one point per second for ten seconds, because at 0.25
+every gap of seven or less rounds down to the minimum payout and the minimum
+was 1. Raised to `MIN_STEP`, so a gap worth less than one early-game action
+closes in a single tick.
